@@ -173,6 +173,8 @@ export default () => ({
     locking: process.env.FF_LOCKING?.toLowerCase() === 'true',
     relay: process.env.FF_RELAY?.toLowerCase() === 'true',
     swapsDecoding: process.env.FF_SWAPS_DECODING?.toLowerCase() === 'true',
+    historyDebugLogs:
+      process.env.FF_HISTORY_DEBUG_LOGS?.toLowerCase() === 'true',
   },
   httpClient: {
     // Timeout in milliseconds to be used for the HTTP client.
@@ -198,6 +200,9 @@ export default () => ({
       maxNestedTransfers: parseInt(
         process.env.MAX_NESTED_TRANSFERS ?? `${100}`,
       ),
+    },
+    safe: {
+      maxOverviews: parseInt(process.env.MAX_SAFE_OVERVIEWS ?? `${7}`),
     },
   },
   redis: {

@@ -175,6 +175,7 @@ export default (): ReturnType<typeof configuration> => ({
     locking: true,
     relay: true,
     swapsDecoding: true,
+    historyDebugLogs: false,
   },
   httpClient: { requestTimeout: faker.number.int() },
   locking: {
@@ -187,6 +188,9 @@ export default (): ReturnType<typeof configuration> => ({
   mappings: {
     history: {
       maxNestedTransfers: faker.number.int({ min: 1, max: 5 }),
+    },
+    safe: {
+      maxOverviews: faker.number.int({ min: 1, max: 5 }),
     },
   },
   owners: {

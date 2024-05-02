@@ -3,7 +3,7 @@
 export default () => ({
   about: {
     name: 'safe-client-gateway',
-    version: process.env.APPLICATION_VERSION,
+    version: process.env.APPLICATION_VERSION || '1.27.0',
     buildNumber: process.env.APPLICATION_BUILD_NUMBER,
   },
   alerts: {
@@ -188,6 +188,8 @@ export default () => ({
       8453: { nativeCoin: 'ethereum', chainName: 'base' },
       84531: { nativeCoin: 'ethereum', chainName: 'base' },
       84532: { nativeCoin: 'ethereum', chainName: 'base' },
+      25: { nativeCoin: 'crypto-com-chain', chainName: 'cronos' },
+      338: { nativeCoin: 'crypto-com-chain', chainName: 'cronos' },
     },
   },
   redis: {

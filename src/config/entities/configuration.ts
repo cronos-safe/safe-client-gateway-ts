@@ -191,7 +191,6 @@ export default () => ({
       25: { nativeCoin: 'crypto-com-chain', chainName: 'cronos' },
       338: { nativeCoin: 'crypto-com-chain', chainName: 'cronos' },
       240: { nativeCoin: 'crypto-com-chain', chainName: 'cronos' },
-      282: { nativeCoin: 'crypto-com-chain', chainName: 'cronos' },
       388: { nativeCoin: 'crypto-com-chain', chainName: 'cronos' },
     },
   },

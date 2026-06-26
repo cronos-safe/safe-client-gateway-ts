@@ -8,9 +8,13 @@ export class AddressInfo {
   @ApiPropertyOptional({ type: String, nullable: true })
   readonly logoUri: string | null;
 
-  constructor(value: string, name?: string, logoUri?: string) {
+  constructor(
+    value: string,
+    name: string | null = null,
+    logoUri: string | null = null,
+  ) {
     this.value = value;
-    this.name = name || null;
-    this.logoUri = logoUri || null;
+    this.name = name === '' ? null : name;
+    this.logoUri = logoUri === '' ? null : logoUri;
   }
 }

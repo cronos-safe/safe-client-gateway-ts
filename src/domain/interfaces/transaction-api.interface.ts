@@ -1,133 +1,156 @@
-import { Backbone } from '@/domain/backbone/entities/backbone.entity';
-import { Balance } from '@/domain/balances/entities/balance.entity';
-import { Singleton } from '@/domain/chains/entities/singleton.entity';
-import { Collectible } from '@/domain/collectibles/entities/collectible.entity';
-import { Contract } from '@/domain/contracts/entities/contract.entity';
-import { DataDecoded } from '@/domain/data-decoder/entities/data-decoded.entity';
-import { Delegate } from '@/domain/delegate/entities/delegate.entity';
-import { Page } from '@/domain/entities/page.entity';
-import { Estimation } from '@/domain/estimations/entities/estimation.entity';
-import { GetEstimationDto } from '@/domain/estimations/entities/get-estimation.dto.entity';
-import { Message } from '@/domain/messages/entities/message.entity';
-import { Device } from '@/domain/notifications/entities/device.entity';
-import { CreationTransaction } from '@/domain/safe/entities/creation-transaction.entity';
-import { ModuleTransaction } from '@/domain/safe/entities/module-transaction.entity';
-import { MultisigTransaction } from '@/domain/safe/entities/multisig-transaction.entity';
-import { SafeList } from '@/domain/safe/entities/safe-list.entity';
-import { Safe } from '@/domain/safe/entities/safe.entity';
-import { Transaction } from '@/domain/safe/entities/transaction.entity';
-import { Transfer } from '@/domain/safe/entities/transfer.entity';
-import { Token } from '@/domain/tokens/entities/token.entity';
-import { AddConfirmationDto } from '@/domain/transactions/entities/add-confirmation.dto.entity';
-import { ProposeTransactionDto } from '@/domain/transactions/entities/propose-transaction.dto.entity';
+import type { Backbone } from '@/modules/backbone/domain/entities/backbone.entity';
+import type { Singleton } from '@/modules/chains/domain/entities/singleton.entity';
+import type { DataDecoded } from '@/modules/data-decoder/domain/v2/entities/data-decoded.entity';
+import type { Delegate } from '@/modules/delegate/domain/entities/delegate.entity';
+import type { Page } from '@/domain/entities/page.entity';
+import type { Estimation } from '@/modules/estimations/domain/entities/estimation.entity';
+import type { GetEstimationDto } from '@/modules/estimations/domain/entities/get-estimation.dto.entity';
+import type { IndexingStatus } from '@/modules/indexing/domain/entities/indexing-status.entity';
+import type { Message } from '@/modules/messages/domain/entities/message.entity';
+import type { CreationTransaction } from '@/modules/safe/domain/entities/creation-transaction.entity';
+import type { ModuleTransaction } from '@/modules/safe/domain/entities/module-transaction.entity';
+import type { MultisigTransaction } from '@/modules/safe/domain/entities/multisig-transaction.entity';
+import type { SafeList } from '@/modules/safe/domain/entities/safe-list.entity';
+import type { Safe } from '@/modules/safe/domain/entities/safe.entity';
+import type { Transaction } from '@/modules/safe/domain/entities/transaction.entity';
+import type { Transfer } from '@/modules/safe/domain/entities/transfer.entity';
+import type { Token } from '@/modules/tokens/domain/entities/token.entity';
+import type { AddConfirmationDto } from '@/modules/transactions/domain/entities/add-confirmation.dto.entity';
+import type { ProposeTransactionDto } from '@/modules/transactions/domain/entities/propose-transaction.dto.entity';
+import type { Raw } from '@/validation/entities/raw.entity';
+import type { Address, Hex } from 'viem';
 
 export interface ITransactionApi {
-  getBalances(args: {
-    safeAddress: string;
-    trusted?: boolean;
-    excludeSpam?: boolean;
-  }): Promise<Balance[]>;
+  getDataDecoded(args: {
+    data: Address;
+    to?: Address;
+  }): Promise<Raw<DataDecoded>>;
 
-  clearLocalBalances(safeAddress: string): Promise<void>;
+  getBackbone(): Promise<Raw<Backbone>>;
 
-  getDataDecoded(args: { data: string; to?: string }): Promise<DataDecoded>;
+  getSingletons(): Promise<Raw<Array<Singleton>>>;
 
-  getCollectibles(args: {
-    safeAddress: string;
-    limit?: number;
-    offset?: number;
-    trusted?: boolean;
-    excludeSpam?: boolean;
-  }): Promise<Page<Collectible>>;
+  getIndexingStatus(): Promise<Raw<IndexingStatus>>;
 
-  clearCollectibles(safeAddress: string): Promise<void>;
+  getSafe(safeAddress: Address): Promise<Raw<Safe>>;
 
-  getBackbone(): Promise<Backbone>;
+  clearSafe(address: Address): Promise<void>;
 
-  getSingletons(): Promise<Singleton[]>;
+  isSafe(address: Address): Promise<boolean>;
 
-  getSafe(safeAddress: string): Promise<Safe>;
-
-  clearSafe(address: string): Promise<void>;
-
-  getContract(contractAddress: string): Promise<Contract>;
+  clearIsSafe(address: Address): Promise<void>;
 
   getDelegates(args: {
-    safeAddress?: string;
-    delegate?: string;
-    delegator?: string;
+    safeAddress?: Address;
+    delegate?: Address;
+    delegator?: Address;
     label?: string;
     limit?: number;
     offset?: number;
-  }): Promise<Page<Delegate>>;
+  }): Promise<Raw<Page<Delegate>>>;
+
+  getDelegatesV2(args: {
+    safeAddress?: Address;
+    delegate?: Address;
+    delegator?: Address;
+    label?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<Raw<Page<Delegate>>>;
+
+  clearDelegates(safeAddress?: Address): Promise<void>;
 
   postDelegate(args: {
-    safeAddress?: string;
-    delegate?: string;
-    delegator?: string;
-    signature?: string;
-    label?: string;
+    safeAddress: Address | null;
+    delegate: Address;
+    delegator: Address;
+    signature: string;
+    label: string;
+  }): Promise<void>;
+
+  postDelegateV2(args: {
+    safeAddress: Address | null;
+    delegate: Address;
+    delegator: Address;
+    signature: string;
+    label: string;
   }): Promise<void>;
 
   deleteDelegate(args: {
-    delegate: string;
-    delegator: string;
+    delegate: Address;
+    delegator: Address;
     signature: string;
   }): Promise<unknown>;
 
   deleteSafeDelegate(args: {
-    delegate: string;
-    safeAddress: string;
+    delegate: Address;
+    safeAddress: Address;
     signature: string;
   }): Promise<unknown>;
 
-  getTransfer(transferId: string): Promise<Transfer>;
+  deleteDelegateV2(args: {
+    delegate: Address;
+    delegator: Address;
+    safeAddress: Address | null;
+    signature: string;
+  }): Promise<unknown>;
+
+  getTransfer(transferId: string): Promise<Raw<Transfer>>;
 
   getTransfers(args: {
-    safeAddress: string;
+    safeAddress: Address;
     onlyErc20?: boolean;
     onlyErc721?: boolean;
     limit?: number;
     offset?: number;
-  }): Promise<Page<Transfer>>;
+    to?: Address;
+  }): Promise<Raw<Page<Transfer>>>;
 
-  clearTransfers(safeAddress: string): Promise<void>;
+  clearTransfers(safeAddress: Address): Promise<void>;
 
   getIncomingTransfers(args: {
-    safeAddress: string;
+    safeAddress: Address;
     executionDateGte?: string;
     executionDateLte?: string;
-    to?: string;
+    to?: Address;
     value?: string;
-    tokenAddress?: string;
+    tokenAddress?: Address;
+    txHash?: string;
     limit?: number;
     offset?: number;
-  }): Promise<Page<Transfer>>;
+  }): Promise<Raw<Page<Transfer>>>;
 
-  clearIncomingTransfers(safeAddress: string): Promise<void>;
+  clearIncomingTransfers(safeAddress: Address): Promise<void>;
 
   postConfirmation(args: {
     safeTxHash: string;
     addConfirmationDto: AddConfirmationDto;
   }): Promise<unknown>;
 
-  getSafesByModule(moduleAddress: string): Promise<SafeList>;
+  getSafesByModule(moduleAddress: Address): Promise<Raw<SafeList>>;
 
-  getModuleTransaction(moduleTransactionId: string): Promise<ModuleTransaction>;
+  getModuleTransaction(
+    moduleTransactionId: string,
+  ): Promise<Raw<ModuleTransaction>>;
 
   getModuleTransactions(args: {
-    safeAddress: string;
+    safeAddress: Address;
     to?: string;
+    txHash?: string;
     module?: string;
     limit?: number;
     offset?: number;
-  }): Promise<Page<ModuleTransaction>>;
+  }): Promise<Raw<Page<ModuleTransaction>>>;
 
-  clearModuleTransactions(safeAddress: string): Promise<void>;
+  clearModuleTransactions(safeAddress: Address): Promise<void>;
 
   getMultisigTransaction(
     safeTransactionHash: string,
-  ): Promise<MultisigTransaction>;
+  ): Promise<Raw<MultisigTransaction>>;
+
+  getMultisigTransactionWithNoCache(
+    safeTransactionHash: string,
+  ): Promise<Raw<MultisigTransaction>>;
 
   deleteTransaction(args: {
     safeTxHash: string;
@@ -137,85 +160,113 @@ export interface ITransactionApi {
   clearMultisigTransaction(safeTransactionHash: string): Promise<void>;
 
   getMultisigTransactions(args: {
-    safeAddress: string;
+    safeAddress: Address;
     ordering?: string;
     executed?: boolean;
     trusted?: boolean;
     executionDateGte?: string;
     executionDateLte?: string;
-    to?: string;
+    to?: Address;
     value?: string;
     nonce?: string;
     nonceGte?: number;
     limit?: number;
     offset?: number;
-  }): Promise<Page<MultisigTransaction>>;
+  }): Promise<Raw<Page<MultisigTransaction>>>;
 
-  clearMultisigTransactions(safeAddress: string): Promise<void>;
+  getMultisigTransactionsWithNoCache(args: {
+    safeAddress: Address;
+    // Transaction Service parameters
+    failed?: boolean;
+    modified__lt?: string;
+    modified__gt?: string;
+    modified__lte?: string;
+    modified__gte?: string;
+    nonce__lt?: number;
+    nonce__gt?: number;
+    nonce__lte?: number;
+    nonce__gte?: number;
+    nonce?: number;
+    safe_tx_hash?: string;
+    to?: string;
+    value__lt?: number;
+    value__gt?: number;
+    value?: number;
+    executed?: boolean;
+    has_confirmations?: boolean;
+    trusted?: boolean;
+    execution_date__gte?: string;
+    execution_date__lte?: string;
+    submission_date__gte?: string;
+    submission_date__lte?: string;
+    transaction_hash?: string;
+    ordering?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<Raw<Page<MultisigTransaction>>>;
 
-  getCreationTransaction(safeAddress: string): Promise<CreationTransaction>;
+  clearMultisigTransactions(safeAddress: Address): Promise<void>;
+
+  getCreationTransaction(
+    safeAddress: Address,
+  ): Promise<Raw<CreationTransaction>>;
+
+  getCreationTransactionWithNoCache(
+    safeAddress: Address,
+  ): Promise<Raw<CreationTransaction>>;
 
   getAllTransactions(args: {
-    safeAddress: string;
+    safeAddress: Address;
     ordering?: string;
     executed?: boolean;
     queued?: boolean;
     limit?: number;
     offset?: number;
-  }): Promise<Page<Transaction>>;
+  }): Promise<Raw<Page<Transaction>>>;
 
-  clearAllTransactions(safeAddress: string): Promise<void>;
+  clearAllTransactions(safeAddress: Address): Promise<void>;
 
-  getToken(address: string): Promise<Token>;
+  getToken(address: Address): Promise<Raw<Token>>;
 
-  getTokens(args: { limit?: number; offset?: number }): Promise<Page<Token>>;
-
-  getSafesByOwner(ownerAddress: string): Promise<SafeList>;
-
-  postDeviceRegistration(args: {
-    device: Device;
-    safes: string[];
-    signatures: string[];
-  }): Promise<void>;
-
-  deleteDeviceRegistration(uuid: string): Promise<void>;
-
-  deleteSafeRegistration(args: {
-    uuid: string;
-    safeAddress: string;
-  }): Promise<void>;
-
-  getEstimation(args: {
-    address: string;
-    getEstimationDto: GetEstimationDto;
-  }): Promise<Estimation>;
-
-  getMessageByHash(messageHash: string): Promise<Message>;
-
-  getMessagesBySafe(args: {
-    safeAddress: string;
+  getTokens(args: {
     limit?: number;
     offset?: number;
-  }): Promise<Page<Message>>;
+  }): Promise<Raw<Page<Token>>>;
+
+  getSafesByOwner(ownerAddress: Address): Promise<Raw<SafeList>>;
+
+  getEstimation(args: {
+    address: Address;
+    getEstimationDto: GetEstimationDto;
+  }): Promise<Raw<Estimation>>;
+
+  getMessageByHash(messageHash: string): Promise<Raw<Message>>;
+
+  getMessagesBySafe(args: {
+    safeAddress: Address;
+    limit?: number;
+    offset?: number;
+  }): Promise<Raw<Page<Message>>>;
 
   postMultisigTransaction(args: {
-    address: string;
+    address: Address;
     data: ProposeTransactionDto;
   }): Promise<unknown>;
 
   postMessage(args: {
-    safeAddress: string;
-    message: string | unknown;
+    safeAddress: Address;
+    message: unknown;
     safeAppId: number | null;
     signature: string;
-  }): Promise<Message>;
+    origin: string | null;
+  }): Promise<Raw<Message>>;
 
   postMessageSignature(args: {
     messageHash: string;
-    signature: string;
+    signature: Hex;
   }): Promise<unknown>;
 
-  clearMessagesBySafe(args: { safeAddress: string }): Promise<void>;
+  clearMessagesBySafe(args: { safeAddress: Address }): Promise<void>;
 
   clearMessagesByHash(args: { messageHash: string }): Promise<void>;
 }

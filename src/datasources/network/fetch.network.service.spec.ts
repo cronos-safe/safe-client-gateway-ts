@@ -1,9 +1,10 @@
 import { faker } from '@faker-js/faker';
-import { ILoggingService } from '@/logging/logging.interface';
+import type { ILoggingService } from '@/logging/logging.interface';
 import { NetworkResponseError } from '@/datasources/network/entities/network.error.entity';
-import { NetworkRequest } from '@/datasources/network/entities/network.request.entity';
-import { FetchClient } from '@/datasources/network/network.module';
+import type { NetworkRequest } from '@/datasources/network/entities/network.request.entity';
+import type { FetchClient } from '@/datasources/network/network.module';
 import { FetchNetworkService } from '@/datasources/network/fetch.network.service';
+import { rawify } from '@/validation/entities/raw.entity';
 
 const fetchClient = jest.fn();
 
@@ -12,6 +13,7 @@ const fetchClientMock: jest.MockedFunction<FetchClient> =
 
 const loggingService = {
   debug: jest.fn(),
+  info: jest.fn(),
 } as jest.MockedObjectDeep<ILoggingService>;
 
 const loggingServiceMock = jest.mocked(loggingService);
@@ -19,8 +21,8 @@ const loggingServiceMock = jest.mocked(loggingService);
 describe('FetchNetworkService', () => {
   let target: FetchNetworkService;
 
-  beforeEach(async () => {
-    jest.clearAllMocks();
+  beforeEach(() => {
+    jest.resetAllMocks();
     target = new FetchNetworkService(fetchClientMock, loggingServiceMock);
   });
 
@@ -28,40 +30,61 @@ describe('FetchNetworkService', () => {
     it(`get uses GET method`, async () => {
       const url = faker.internet.url({ appendSlash: false });
 
-      await target.get(url);
+      await target.get({ url });
 
+      const expectedUrl = `${url}/`;
       expect(fetchClientMock).toHaveBeenCalledTimes(1);
-      expect(fetchClientMock).toHaveBeenCalledWith(`${url}/`, {
+      expect(fetchClientMock).toHaveBeenCalledWith(
+        expectedUrl,
+        {
+          method: 'GET',
+        },
+        undefined,
+        undefined,
+      );
+      expect(loggingService.info).toHaveBeenCalledTimes(1);
+      expect(loggingService.info).toHaveBeenCalledWith({
+        type: 'EXTERNAL_REQUEST',
         method: 'GET',
+        url: expectedUrl,
       });
     });
 
     it(`get calls fetch get with request`, async () => {
       const url = faker.internet.url({ appendSlash: false });
-      const request: NetworkRequest = {
+      const networkRequest: NetworkRequest = {
         params: { some_query_param: 'query_param' },
         headers: {
           test: 'value',
         },
       };
 
-      await target.get(url, request);
+      await target.get({ url, networkRequest });
 
+      const expectedUrl = `${url}/?some_query_param=query_param`;
       expect(fetchClientMock).toHaveBeenCalledTimes(1);
       expect(fetchClientMock).toHaveBeenCalledWith(
-        `${url}/?some_query_param=query_param`,
+        expectedUrl,
         {
           method: 'GET',
           headers: {
             test: 'value',
           },
         },
+        undefined,
+        undefined,
       );
+      expect(loggingService.info).toHaveBeenCalledTimes(1);
+      expect(loggingService.info).toHaveBeenCalledWith({
+        type: 'EXTERNAL_REQUEST',
+        method: 'GET',
+        url: expectedUrl,
+      });
     });
 
     it(`get should remove empty strings, null and undefined query params from the request`, async () => {
       const url = faker.internet.url({ appendSlash: false });
-      const request: NetworkRequest = {
+      const networkRequest: NetworkRequest = {
         params: {
           boolean: true,
           falsy_boolean: false,
@@ -75,15 +98,24 @@ describe('FetchNetworkService', () => {
         },
       };
 
-      await target.get(url, request);
+      await target.get({ url, networkRequest });
 
+      const expectedUrl = `${url}/?boolean=true&falsy_boolean=false&integer=1&falsy_integer=0&string=string`;
       expect(fetchClientMock).toHaveBeenCalledTimes(1);
       expect(fetchClientMock).toHaveBeenCalledWith(
-        `${url}/?boolean=true&falsy_boolean=false&integer=1&falsy_integer=0&string=string`,
+        expectedUrl,
         {
           method: 'GET',
         },
+        undefined,
+        undefined,
       );
+      expect(loggingService.info).toHaveBeenCalledTimes(1);
+      expect(loggingService.info).toHaveBeenCalledWith({
+        type: 'EXTERNAL_REQUEST',
+        method: 'GET',
+        url: expectedUrl,
+      });
     });
 
     it(`get logs response error`, async () => {
@@ -98,11 +130,17 @@ describe('FetchNetworkService', () => {
       );
       fetchClientMock.mockRejectedValueOnce(error);
 
-      await expect(target.get(url)).rejects.toThrow(error);
+      await expect(target.get({ url })).rejects.toThrow(error);
 
+      expect(loggingService.info).toHaveBeenCalledTimes(1);
+      expect(loggingService.info).toHaveBeenCalledWith({
+        type: 'EXTERNAL_REQUEST',
+        method: 'GET',
+        url: `${url}/`,
+      });
       expect(loggingService.debug).toHaveBeenCalledTimes(1);
       expect(loggingService.debug).toHaveBeenCalledWith({
-        type: 'external_request',
+        type: 'EXTERNAL_REQUEST',
         protocol: error.url.protocol,
         target_host: error.url.host,
         path: error.url.pathname,
@@ -111,6 +149,55 @@ describe('FetchNetworkService', () => {
         response_time_ms: expect.any(Number),
       });
     });
+
+    it(`get uses custom timeout when provided`, async () => {
+      const url = faker.internet.url({ appendSlash: false });
+      const timeout = faker.number.int({ min: 1000, max: 10000 });
+      const networkRequest: NetworkRequest = {
+        timeout,
+      };
+      fetchClientMock.mockResolvedValueOnce({
+        status: 200,
+        data: rawify({ data: 'some_data' }),
+      });
+
+      await target.get({ url, networkRequest });
+
+      const expectedUrl = `${url}/`;
+      expect(fetchClientMock).toHaveBeenCalledTimes(1);
+      expect(fetchClientMock).toHaveBeenCalledWith(
+        expectedUrl,
+        {
+          method: 'GET',
+        },
+        timeout,
+        undefined,
+      );
+    });
+
+    it(`get does not include timeout when timeout is not provided`, async () => {
+      const url = faker.internet.url({ appendSlash: false });
+      fetchClientMock.mockResolvedValueOnce({
+        status: 200,
+        data: rawify({ data: 'some_data' }),
+      });
+
+      await target.get({ url });
+
+      const expectedUrl = `${url}/`;
+      expect(fetchClientMock).toHaveBeenCalledTimes(1);
+      expect(fetchClientMock).toHaveBeenCalledWith(
+        expectedUrl,
+        {
+          method: 'GET',
+        },
+        undefined,
+        undefined,
+      );
+      // Verify timeout is not passed as third argument
+      const callArgs = fetchClientMock.mock.calls[0];
+      expect(callArgs[2]).toBeUndefined();
+    });
   });
 
   describe('POST requests', () => {
@@ -118,33 +205,46 @@ describe('FetchNetworkService', () => {
       const url = faker.internet.url({ appendSlash: false });
       const data = { [faker.word.sample()]: faker.string.alphanumeric() };
 
-      await target.post(url, data);
+      await target.post({ url, data });
 
+      const expectedUrl = `${url}/`;
       expect(fetchClientMock).toHaveBeenCalledTimes(1);
-      expect(fetchClientMock).toHaveBeenCalledWith(`${url}/`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-        headers: {
-          'Content-Type': 'application/json',
+      expect(fetchClientMock).toHaveBeenCalledWith(
+        expectedUrl,
+        {
+          method: 'POST',
+          body: JSON.stringify(data),
+          headers: {
+            'Content-Type': 'application/json',
+          },
         },
+        undefined,
+        undefined,
+      );
+      expect(loggingService.info).toHaveBeenCalledTimes(1);
+      expect(loggingService.info).toHaveBeenCalledWith({
+        type: 'EXTERNAL_REQUEST',
+        method: 'POST',
+        url: expectedUrl,
       });
     });
 
     it(`post calls fetch with request`, async () => {
       const url = faker.internet.url({ appendSlash: false });
       const data = { [faker.word.sample()]: faker.string.alphanumeric() };
-      const request: NetworkRequest = {
+      const networkRequest: NetworkRequest = {
         params: { some_query_param: 'query_param' },
         headers: {
           test: 'value',
         },
       };
 
-      await target.post(url, data, request);
+      await target.post({ url, data, networkRequest });
 
+      const expectedUrl = `${url}/?some_query_param=query_param`;
       expect(fetchClientMock).toHaveBeenCalledTimes(1);
       expect(fetchClientMock).toHaveBeenCalledWith(
-        `${url}/?some_query_param=query_param`,
+        expectedUrl,
         {
           method: 'POST',
           headers: {
@@ -153,7 +253,15 @@ describe('FetchNetworkService', () => {
           },
           body: JSON.stringify(data),
         },
+        undefined,
+        undefined,
       );
+      expect(loggingService.info).toHaveBeenCalledTimes(1);
+      expect(loggingService.info).toHaveBeenCalledWith({
+        type: 'EXTERNAL_REQUEST',
+        method: 'POST',
+        url: expectedUrl,
+      });
     });
 
     it(`post logs response error`, async () => {
@@ -168,11 +276,17 @@ describe('FetchNetworkService', () => {
       );
       fetchClientMock.mockRejectedValueOnce(error);
 
-      await expect(target.post(url, {})).rejects.toThrow(error);
+      await expect(target.post({ url, data: {} })).rejects.toThrow(error);
 
+      expect(loggingService.info).toHaveBeenCalledTimes(1);
+      expect(loggingService.info).toHaveBeenCalledWith({
+        type: 'EXTERNAL_REQUEST',
+        method: 'POST',
+        url: `${url}/`,
+      });
       expect(loggingService.debug).toHaveBeenCalledTimes(1);
       expect(loggingService.debug).toHaveBeenCalledWith({
-        type: 'external_request',
+        type: 'EXTERNAL_REQUEST',
         protocol: error.url.protocol,
         target_host: error.url.host,
         path: error.url.pathname,
@@ -181,17 +295,122 @@ describe('FetchNetworkService', () => {
         response_time_ms: expect.any(Number),
       });
     });
+
+    it(`post uses custom timeout when provided`, async () => {
+      const url = faker.internet.url({ appendSlash: false });
+      const data = { [faker.word.sample()]: faker.string.alphanumeric() };
+      const timeout = faker.number.int({ min: 1000, max: 10000 });
+      const networkRequest: NetworkRequest = {
+        timeout,
+      };
+      fetchClientMock.mockResolvedValueOnce({
+        status: 200,
+        data: rawify({ data: 'some_data' }),
+      });
+
+      await target.post({ url, data, networkRequest });
+
+      const expectedUrl = `${url}/`;
+      expect(fetchClientMock).toHaveBeenCalledTimes(1);
+      expect(fetchClientMock).toHaveBeenCalledWith(
+        expectedUrl,
+        {
+          method: 'POST',
+          body: JSON.stringify(data),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+        timeout,
+        undefined,
+      );
+    });
+
+    it(`post does not include timeout when timeout is not provided`, async () => {
+      const url = faker.internet.url({ appendSlash: false });
+      const data = { [faker.word.sample()]: faker.string.alphanumeric() };
+      fetchClientMock.mockResolvedValueOnce({
+        status: 200,
+        data: rawify({ data: 'some_data' }),
+      });
+
+      await target.post({ url, data });
+
+      const expectedUrl = `${url}/`;
+      expect(fetchClientMock).toHaveBeenCalledTimes(1);
+      expect(fetchClientMock).toHaveBeenCalledWith(
+        expectedUrl,
+        {
+          method: 'POST',
+          body: JSON.stringify(data),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+        undefined,
+        undefined,
+      );
+      // Verify timeout is not passed as third argument
+      const callArgs = fetchClientMock.mock.calls[0];
+      expect(callArgs[2]).toBeUndefined();
+    });
   });
 
   describe('DELETE requests', () => {
     it(`delete uses DELETE method`, async () => {
       const url = faker.internet.url({ appendSlash: false });
 
-      await target.delete(url);
+      await target.delete({ url });
 
       expect(fetchClientMock).toHaveBeenCalledTimes(1);
-      expect(fetchClientMock).toHaveBeenCalledWith(url, {
+      expect(fetchClientMock).toHaveBeenCalledWith(
+        `${url}/`,
+        {
+          method: 'DELETE',
+        },
+        undefined,
+        undefined,
+      );
+      expect(loggingService.info).toHaveBeenCalledTimes(1);
+      expect(loggingService.info).toHaveBeenCalledWith({
+        type: 'EXTERNAL_REQUEST',
         method: 'DELETE',
+        url: `${url}/`,
+      });
+    });
+
+    it(`delete calls fetch with request`, async () => {
+      const url = faker.internet.url({ appendSlash: false });
+      const data = { [faker.word.sample()]: faker.string.alphanumeric() };
+      const networkRequest: NetworkRequest = {
+        params: { some_query_param: 'query_param' },
+        headers: {
+          test: 'value',
+        },
+      };
+
+      await target.delete({ url, data, networkRequest });
+
+      const expectedUrl = `${url}/?some_query_param=query_param`;
+      expect(fetchClientMock).toHaveBeenCalledTimes(1);
+      expect(fetchClientMock).toHaveBeenCalledWith(
+        expectedUrl,
+        {
+          method: 'DELETE',
+          headers: {
+            test: 'value',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data),
+        },
+        undefined,
+        undefined,
+      );
+      expect(loggingService.info).toHaveBeenCalledTimes(1);
+      expect(loggingService.info).toHaveBeenCalledWith({
+        type: 'EXTERNAL_REQUEST',
+        method: 'DELETE',
+        url: expectedUrl,
       });
     });
 
@@ -207,11 +426,11 @@ describe('FetchNetworkService', () => {
       );
       fetchClientMock.mockRejectedValueOnce(error);
 
-      await expect(target.delete(url)).rejects.toThrow(error);
+      await expect(target.delete({ url })).rejects.toThrow(error);
 
       expect(loggingService.debug).toHaveBeenCalledTimes(1);
       expect(loggingService.debug).toHaveBeenCalledWith({
-        type: 'external_request',
+        type: 'EXTERNAL_REQUEST',
         protocol: error.url.protocol,
         target_host: error.url.host,
         path: error.url.pathname,
@@ -219,6 +438,66 @@ describe('FetchNetworkService', () => {
         detail: error.response.statusText,
         response_time_ms: expect.any(Number),
       });
+      expect(loggingService.info).toHaveBeenCalledTimes(1);
+      expect(loggingService.info).toHaveBeenCalledWith({
+        type: 'EXTERNAL_REQUEST',
+        method: 'DELETE',
+        url: `${url}/`,
+      });
+    });
+
+    it(`delete uses custom timeout when provided`, async () => {
+      const url = faker.internet.url({ appendSlash: false });
+      const data = { [faker.word.sample()]: faker.string.alphanumeric() };
+      const timeout = faker.number.int({ min: 1000, max: 10000 });
+      const networkRequest: NetworkRequest = {
+        timeout,
+      };
+      fetchClientMock.mockResolvedValueOnce({
+        status: 200,
+        data: rawify({ data: 'some_data' }),
+      });
+
+      await target.delete({ url, data, networkRequest });
+
+      const expectedUrl = `${url}/`;
+      expect(fetchClientMock).toHaveBeenCalledTimes(1);
+      expect(fetchClientMock).toHaveBeenCalledWith(
+        expectedUrl,
+        {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data),
+        },
+        timeout,
+        undefined,
+      );
+    });
+
+    it(`delete does not include timeout when timeout is not provided`, async () => {
+      const url = faker.internet.url({ appendSlash: false });
+      fetchClientMock.mockResolvedValueOnce({
+        status: 200,
+        data: rawify({ data: 'some_data' }),
+      });
+
+      await target.delete({ url });
+
+      const expectedUrl = `${url}/`;
+      expect(fetchClientMock).toHaveBeenCalledTimes(1);
+      expect(fetchClientMock).toHaveBeenCalledWith(
+        expectedUrl,
+        {
+          method: 'DELETE',
+        },
+        undefined,
+        undefined,
+      );
+      // Verify timeout is not passed as third argument
+      const callArgs = fetchClientMock.mock.calls[0];
+      expect(callArgs[2]).toBeUndefined();
     });
   });
 });

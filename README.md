@@ -10,12 +10,12 @@ It provides UI-oriented mappings and data structures for easier integration with
 
 ## Documentation
 
-- [Client Gateway OpenAPI specification](https://safe-client.safe.global/index.html)
+- [Client Gateway OpenAPI specification](https://safe-client.safe.global/api)
 - [Deploying the service](https://github.com/safe-global/safe-infrastructure)
 
 ## Requirements
 
-- Node 20.11.0 – https://nodejs.org/en/
+- Node.js v24.11.0 'Krypton' LTS ([Node.js Release Schedule](https://nodejs.org/en/about/previous-releases)) – https://nodejs.org/en/
 - Docker Compose – https://docs.docker.com/compose/
 
 ## Installation
@@ -28,6 +28,24 @@ We use Yarn as the package manager for this project. Yarn is bundled with the pr
 ```bash
 corepack enable && yarn install
 ```
+
+The project requires some ABIs that are generated after install. In order to manually generate them, run:
+
+```bash
+yarn generate-abis
+```
+
+## Setup your env
+
+We recommend using what is available in the .env.sample file:
+
+```bash
+cp .env.sample .env
+```
+
+Then edit your `.env` file with your configuration values.
+
+Please review the required API keys in the `.env` file and ensure you have created the necessary keys for the services you plan to use.
 
 ## Running the app
 
@@ -52,12 +70,27 @@ yarn run start:prod
 
 ## Test
 
-```bash
+The unit test suite contains tests that require a database connection.
+This project provides a `db-test` container which also validates the support for SSL connections.
+To start the container, make sure that the key for the self-signed certificate
+has the right permissions.
+
+```shell
+# disallow any access to world or group
+chmod 0600 db_config/test/server.key
+```
+
+With the right permissions set on the `server.key` file we can now start the `db-test` container:
+
+```shell
+# start the db-test container
+docker compose up -d db-test
+
 # unit tests
 yarn run test
 
 # e2e tests
-yarn run test:e2e
+docker-compose up -d redis rabbitmq && yarn run test:e2e
 
 # test coverage
 yarn run test:cov
@@ -74,3 +107,18 @@ These checks can be automatically executed using Git hooks. If you wish to insta
 yarn install
 yarn husky install
 ```
+
+## Database Migrations
+
+Database migrations are configured to execute automatically. To disable them, set the following environment variables:
+
+```
+RUN_MIGRATIONS=false
+DB_MIGRATIONS_EXECUTE=false
+```
+
+For migrations to be generated automatically, the entity file must follow this structure and naming convention:
+
+`src/**/entities/*.entity.db.ts`
+
+The file should be located in the `src` folder, inside an `entities` directory. The filename should follow the format `{FILE_NAME}.entity.db.ts`, where `{FILE_NAME}` is replaced with your desired name.

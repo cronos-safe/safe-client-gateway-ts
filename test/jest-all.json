@@ -9,8 +9,10 @@
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },
+  "transformIgnorePatterns": ["node_modules/(?!@faker-js).+"],
   "coverageDirectory": "./coverage",
   "moduleNameMapper": {
+    "^@/abis/(.*)$": "<rootDir>/abis/$1",
     "^@/(.*)$": "<rootDir>/src/$1"
   },
   "globalSetup": "<rootDir>/test/global-setup.ts"

@@ -1,11 +1,12 @@
 import { Controller, Get, INestApplication, Module } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import * as request from 'supertest';
+import request from 'supertest';
 import { PaginationDataDecorator } from '@/routes/common/decorators/pagination.data.decorator';
 import { PaginationData } from '@/routes/common/pagination/pagination.data';
+import { Server } from 'net';
 
 describe('PaginationDataDecorator', () => {
-  let app: INestApplication;
+  let app: INestApplication<Server>;
   let paginationData: PaginationData;
 
   @Controller()
@@ -21,7 +22,7 @@ describe('PaginationDataDecorator', () => {
   class TestModule {}
 
   beforeEach(async () => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [TestModule],

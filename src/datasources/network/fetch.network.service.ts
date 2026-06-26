@@ -5,6 +5,7 @@ import { NetworkResponse } from '@/datasources/network/entities/network.response
 import { INetworkService } from '@/datasources/network/network.service.interface';
 import { FetchClient } from '@/datasources/network/network.module';
 import { NetworkResponseError } from '@/datasources/network/entities/network.error.entity';
+import { LogType } from '@/domain/common/entities/log-type.entity';
 
 /**
  * A {@link INetworkService} which uses fetch as the main HTTP client
@@ -18,64 +19,96 @@ export class FetchNetworkService implements INetworkService {
     private readonly loggingService: ILoggingService,
   ) {}
 
-  async get<T>(
-    baseUrl: string,
-    { params, ...options }: NetworkRequest = {},
-  ): Promise<NetworkResponse<T>> {
-    const url = this.buildUrl(baseUrl, params);
+  async get<T>(args: {
+    url: string;
+    networkRequest?: NetworkRequest;
+  }): Promise<NetworkResponse<T>> {
+    const url = this.buildUrl(args.url, args.networkRequest?.params);
+    this.logRequest(url, 'GET');
     const startTimeMs = performance.now();
     try {
-      return await this.client<T>(url, {
-        method: 'GET',
-        ...options,
-      });
-    } catch (error) {
-      this.logErrorResponse(error, performance.now() - startTimeMs);
-      throw error;
-    }
-  }
-
-  async post<T>(
-    baseUrl: string,
-    data: object,
-    { params, headers }: NetworkRequest = {},
-  ): Promise<NetworkResponse<T>> {
-    const url = this.buildUrl(baseUrl, params);
-    const startTimeMs = performance.now();
-    try {
-      return await this.client<T>(url, {
-        method: 'POST',
-        body: JSON.stringify(data),
-        headers: {
-          'Content-Type': 'application/json',
-          ...headers,
+      return await this.client<T>(
+        url,
+        {
+          method: 'GET',
+          headers: args.networkRequest?.headers,
         },
-      });
+        args.networkRequest?.timeout,
+        args.networkRequest?.circuitBreaker,
+      );
     } catch (error) {
       this.logErrorResponse(error, performance.now() - startTimeMs);
       throw error;
     }
   }
 
-  async delete<T>(url: string, data?: object): Promise<NetworkResponse<T>> {
+  async post<T>(args: {
+    url: string;
+    data?: object;
+    networkRequest?: NetworkRequest;
+  }): Promise<NetworkResponse<T>> {
+    const url = this.buildUrl(args.url, args.networkRequest?.params);
+    this.logRequest(url, 'POST');
     const startTimeMs = performance.now();
     try {
-      return await this.client<T>(url, {
-        method: 'DELETE',
-        ...(data && {
+      return await this.client<T>(
+        url,
+        {
+          method: 'POST',
+          body: JSON.stringify(args.data),
           headers: {
             'Content-Type': 'application/json',
+            ...(args.networkRequest?.headers ?? {}),
           },
-          body: JSON.stringify(data),
-        }),
-      });
+        },
+        args.networkRequest?.timeout,
+        args.networkRequest?.circuitBreaker,
+      );
     } catch (error) {
       this.logErrorResponse(error, performance.now() - startTimeMs);
       throw error;
     }
   }
 
-  private buildUrl(baseUrl: string, params = {}): string {
+  async delete<T>(args: {
+    url: string;
+    data?: object;
+    networkRequest?: NetworkRequest;
+  }): Promise<NetworkResponse<T>> {
+    const url = this.buildUrl(args.url, args.networkRequest?.params);
+    this.logRequest(url, 'DELETE');
+    const startTimeMs = performance.now();
+
+    let headers = args.networkRequest?.headers;
+
+    if (args.data) {
+      headers ??= {};
+      headers['Content-Type'] = 'application/json';
+    }
+
+    try {
+      return await this.client<T>(
+        url,
+        {
+          method: 'DELETE',
+          ...(args.data && {
+            body: JSON.stringify(args.data),
+          }),
+          headers,
+        },
+        args.networkRequest?.timeout,
+        args.networkRequest?.circuitBreaker,
+      );
+    } catch (error) {
+      this.logErrorResponse(error, performance.now() - startTimeMs);
+      throw error;
+    }
+  }
+
+  private buildUrl(
+    baseUrl: string,
+    params: Record<string, NonNullable<NetworkRequest['params']>[string]> = {},
+  ): string {
     const urlObject = new URL(baseUrl);
 
     for (const [key, value] of Object.entries(params)) {
@@ -87,13 +120,27 @@ export class FetchNetworkService implements INetworkService {
     return urlObject.toString();
   }
 
+  /**
+   * Logs the request properties. This is useful for debugging and monitoring purposes.
+   * TODO: remove this method when the Safe Transaction Service implements the request_id header.
+   * @param url
+   * @param method
+   */
+  private logRequest(url: string, method: string): void {
+    this.loggingService.info({
+      type: LogType.ExternalRequest,
+      method,
+      url,
+    });
+  }
+
   private logErrorResponse(error: unknown, responseTimeMs: number): void {
     if (!(error instanceof NetworkResponseError)) {
       return;
     }
 
     this.loggingService.debug({
-      type: 'external_request',
+      type: LogType.ExternalRequest,
       protocol: error.url.protocol,
       target_host: error.url.host,
       path: error.url.pathname,

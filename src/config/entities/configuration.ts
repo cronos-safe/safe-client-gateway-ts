@@ -1,6 +1,4 @@
-import { getBlocklist } from '@/config/entities/blocklist.config';
 import type { RelayRules } from '@/modules/relay/domain/entities/relay.configuration';
-import { randomBytes } from 'crypto';
 
 // Custom configuration for the application
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -9,39 +7,6 @@ export default () => ({
     name: 'safe-client-gateway',
     version: process.env.APPLICATION_VERSION || 'v1.97.0',
     buildNumber: process.env.APPLICATION_BUILD_NUMBER,
-  },
-  accounts: {
-    creationRateLimitPeriodSeconds: parseInt(
-      process.env.ACCOUNT_CREATION_RATE_LIMIT_PERIOD_SECONDS ?? `${3600}`,
-    ),
-    creationRateLimitCalls: parseInt(
-      process.env.ACCOUNT_CREATION_RATE_LIMIT_CALLS_BY_PERIOD ?? `${25}`,
-    ),
-    counterfactualSafes: {
-      creationRateLimitPeriodSeconds: parseInt(
-        process.env.COUNTERFACTUAL_SAFES_CREATION_RATE_LIMIT_PERIOD_SECONDS ??
-          `${3600}`,
-      ),
-      creationRateLimitCalls: parseInt(
-        process.env.COUNTERFACTUAL_SAFES_CREATION_RATE_LIMIT_CALLS_BY_PERIOD ??
-          `${25}`,
-      ),
-    },
-    encryption: {
-      // The encryption type to use. Defaults to 'local'.
-      // Supported values: 'aws', 'local'
-      type: process.env.ACCOUNTS_ENCRYPTION_TYPE || 'local',
-      awsKms: {
-        keyId: process.env.AWS_KMS_ENCRYPTION_KEY_ID,
-        algorithm: process.env.AWS_KMS_ENCRYPTION_ALGORITHM || 'aes-256-cbc',
-      },
-      local: {
-        algorithm: process.env.LOCAL_ENCRYPTION_ALGORITHM || 'aes-256-cbc',
-        key:
-          process.env.LOCAL_ENCRYPTION_KEY || randomBytes(32).toString('hex'),
-        iv: process.env.LOCAL_ENCRYPTION_IV || randomBytes(16).toString('hex'),
-      },
-    },
   },
   amqp: {
     url: process.env.AMQP_URL || 'amqp://localhost:5672',
@@ -109,21 +74,6 @@ export default () => ({
       zerion: {
         apiKey: process.env.ZERION_API_KEY,
         baseUri: process.env.ZERION_BASE_URI || 'https://api.zerion.io',
-        chains: {
-          1: { chainName: 'ethereum' },
-          10: { chainName: 'optimism' },
-          100: { chainName: 'xdai' },
-          1101: { chainName: 'polygon-zkevm' },
-          1313161554: { chainName: 'aurora' },
-          137: { chainName: 'polygon' },
-          324: { chainName: 'zksync-era' },
-          42161: { chainName: 'arbitrum' },
-          42220: { chainName: 'celo' },
-          43114: { chainName: 'avalanche' },
-          534352: { chainName: 'scroll' },
-          56: { chainName: 'binance-smart-chain' },
-          8453: { chainName: 'base' },
-        },
         currencies: [
           'USD',
           'EUR',
@@ -162,7 +112,10 @@ export default () => ({
     },
   },
   blockchain: {
-    blocklist: getBlocklist(),
+    blocklistEnabled: process.env.BLOCKLIST_ENABLED?.toLowerCase() !== 'false',
+    blocklistSecretData: process.env.BLOCKLIST_ENCRYPTED_DATA,
+    blocklistSecretKey: process.env.BLOCKLIST_SECRET_KEY,
+    blocklistSecretSalt: process.env.BLOCKLIST_SECRET_SALT,
     infura: {
       apiKey: process.env.INFURA_API_KEY,
     },
@@ -291,8 +244,10 @@ export default () => ({
   },
   features: {
     email: process.env.FF_EMAIL?.toLowerCase() === 'true',
-    zerionBalancesChainIds:
-      process.env.FF_ZERION_BALANCES_CHAIN_IDS?.split(',') ?? [],
+    // Support both new (FF_ZERION_ENABLED) and legacy (FF_ZERION_BALANCES_CHAIN_IDS) env vars
+    zerionBalancesEnabled:
+      !!process.env.FF_ZERION_ENABLED ||
+      !!process.env.FF_ZERION_BALANCES_CHAIN_IDS,
     zerionPositions:
       process.env.FF_ZERION_POSITIONS_DISABLED?.toLowerCase() !== 'true',
     debugLogs: process.env.FF_DEBUG_LOGS?.toLowerCase() === 'true',
@@ -301,7 +256,6 @@ export default () => ({
     auth: process.env.FF_AUTH?.toLowerCase() === 'true',
     counterfactualBalances:
       process.env.FF_COUNTERFACTUAL_BALANCES?.toLowerCase() === 'true',
-    accounts: process.env.FF_ACCOUNTS?.toLowerCase() === 'true',
     users: process.env.FF_USERS?.toLowerCase() === 'true',
     hookHttpPostEvent:
       process.env.FF_HOOK_HTTP_POST_EVENT?.toLowerCase() === 'true',
@@ -462,6 +416,8 @@ export default () => ({
       56: process.env.RELAY_PROVIDER_API_KEY_BSC,
       // Gnosis
       100: process.env.RELAY_PROVIDER_API_KEY_GNOSIS_CHAIN,
+      // Unichain
+      130: process.env.RELAY_PROVIDER_API_KEY_UNICHAIN,
       // Polygon
       137: process.env.RELAY_PROVIDER_API_KEY_POLYGON,
       // Polygon zkEVM
@@ -525,6 +481,11 @@ export default () => ({
         process.env.SAFE_CONFIG_CHAINS_MAX_SEQUENTIAL_PAGES ?? `${3}`,
       ),
     },
+    safes: {
+      maxSequentialPages: parseInt(
+        process.env.SAFE_CONFIG_SAFES_MAX_SEQUENTIAL_PAGES ?? `${10}`,
+      ),
+    },
   },
   safeDataDecoder: {
     baseUri:
@@ -533,6 +494,7 @@ export default () => ({
   },
   safeTransaction: {
     useVpcUrl: process.env.USE_TX_SERVICE_VPC_URL?.toLowerCase() === 'true',
+    apiKey: process.env.TX_SERVICE_API_KEY,
   },
   safeWebApp: {
     baseUri: process.env.SAFE_WEB_APP_BASE_URI || 'https://app.safe.global',
@@ -593,6 +555,7 @@ export default () => ({
       43114: 'https://api.cow.fi/avalanche',
       11155111: 'https://api.cow.fi/sepolia',
       59144: 'https://api.cow.fi/linea',
+      9745: 'https://api.cow.fi/plasma',
     },
     explorerBaseUri:
       process.env.SWAPS_EXPLORER_URI || 'https://explorer.cow.fi/',
@@ -695,6 +658,14 @@ export default () => ({
         apiKey: process.env.BLOCKAID_CLIENT_API_KEY,
       },
     },
+  },
+  etherscan: {
+    baseUri:
+      process.env.ETHERSCAN_BASE_URI || 'https://api.etherscan.io/v2/api',
+    apiKey: process.env.ETHERSCAN_API_KEY,
+    gasPriceCacheTtlSeconds: parseInt(
+      process.env.ETHERSCAN_GAS_PRICE_CACHE_TTL_SECONDS ?? `${10}`,
+    ),
   },
 });
 

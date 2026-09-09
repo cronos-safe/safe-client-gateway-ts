@@ -5,13 +5,9 @@ import {
   type RecipientStatus,
 } from './recipient-status.entity';
 import { BridgeStatusSchema, type BridgeStatus } from './bridge-status.entity';
-import {
-  ContractStatusSchema,
-  type ContractStatus,
-} from './contract-status.entity';
-import { ThreatStatusSchema, type ThreatStatus } from './threat-status.entity';
+import { ContractStatus, ContractStatusSchema } from './contract-status.entity';
+import { ThreatStatus, ThreatStatusSchema } from './threat-status.entity';
 import { NumericStringSchema } from '@/validation/entities/schemas/numeric-string.schema';
-import type { Address } from 'viem';
 import { AddressSchema } from '@/validation/entities/schemas/address.schema';
 
 /**
@@ -20,10 +16,10 @@ import { AddressSchema } from '@/validation/entities/schemas/address.schema';
  * This status can be used as fallbacks across any analysis type
  * when errors or exceptional conditions occur.
  */
-export const CommonStatus = [
+export const CommonStatus = {
   /** Analysis failed due to service issues or errors */
-  'FAILED',
-] as const;
+  FAILED: 'FAILED',
+} as const;
 
 /**
  * Zod schema for validating CommonStatus enum values.
@@ -109,9 +105,30 @@ export const RecipientAnalysisResultSchema = z.union([
 /**
  * Zod schema for contract analysis results.
  */
-export const ContractAnalysisResultSchema = AnalysisResultBaseSchema.extend({
-  type: z.union([ContractStatusSchema, CommonStatusSchema]),
-});
+
+export const UnofficialFallbackHandlerAnalysisResultSchema =
+  AnalysisResultBaseSchema.extend({
+    type: z.literal(ContractStatus.UNOFFICIAL_FALLBACK_HANDLER),
+    fallbackHandler: z
+      .object({
+        address: AddressSchema,
+        name: z.string().optional(),
+        logoUrl: z.url().optional(),
+      })
+      .optional(),
+  });
+
+export const ContractAnalysisResultSchema = z.union([
+  UnofficialFallbackHandlerAnalysisResultSchema,
+  AnalysisResultBaseSchema.extend({
+    type: z.union([
+      ContractStatusSchema.exclude([
+        ContractStatus.UNOFFICIAL_FALLBACK_HANDLER,
+      ]),
+      CommonStatusSchema,
+    ]),
+  }),
+]);
 
 /** Zod schema definition for threat (MALICIOUS or MODERATE) analysis issues */
 const ThreatIssueSchema = z.object({
@@ -121,31 +138,44 @@ const ThreatIssueSchema = z.object({
 
 /**
  * Zod schema for threat analysis results.
- * Uses union to validate type-specific fields.
+ * Split into multiple schemas to keep each variant focused and reusable.
  */
-export const ThreatAnalysisResultSchema = z.union([
-  // MASTERCOPY_CHANGE: requires before and after
+const MasterCopyChangeThreatAnalysisResultSchema =
   AnalysisResultBaseSchema.extend({
-    type: z.literal('MASTERCOPY_CHANGE'),
+    type: z.literal(ThreatStatus.MASTERCOPY_CHANGE),
     before: AddressSchema,
     after: AddressSchema,
-  }),
-  // MALICIOUS or MODERATE: optional issues
-  AnalysisResultBaseSchema.extend({
-    type: z.union([z.literal('MALICIOUS'), z.literal('MODERATE')]),
-    issues: z.record(SeveritySchema, z.array(ThreatIssueSchema)).optional(),
-  }),
-  // All others: no extra fields
+  });
+
+const MaliciousOrModerateThreatAnalysisResultSchema =
   AnalysisResultBaseSchema.extend({
     type: z.union([
-      ThreatStatusSchema.exclude([
-        'MASTERCOPY_CHANGE',
-        'MALICIOUS',
-        'MODERATE',
-      ]),
-      CommonStatusSchema,
+      z.literal(ThreatStatus.MALICIOUS),
+      z.literal(ThreatStatus.MODERATE),
     ]),
-  }),
+    issues: z
+      .partialRecord(SeveritySchema, z.array(ThreatIssueSchema))
+      .optional(),
+  });
+
+const FailedThreatAnalysisResultSchema = AnalysisResultBaseSchema.extend({
+  type: z.literal(CommonStatus.FAILED),
+  error: z.string().optional(),
+});
+
+const DefaultThreatAnalysisResultSchema = AnalysisResultBaseSchema.extend({
+  type: ThreatStatusSchema.exclude([
+    ThreatStatus.MASTERCOPY_CHANGE,
+    ThreatStatus.MALICIOUS,
+    ThreatStatus.MODERATE,
+  ]),
+});
+
+export const ThreatAnalysisResultSchema = z.union([
+  MasterCopyChangeThreatAnalysisResultSchema,
+  MaliciousOrModerateThreatAnalysisResultSchema,
+  FailedThreatAnalysisResultSchema,
+  DefaultThreatAnalysisResultSchema,
 ]);
 
 /**
@@ -164,38 +194,30 @@ export type ContractAnalysisResult = z.infer<
   typeof ContractAnalysisResultSchema
 >;
 
+export type UnofficialFallbackHandlerAnalysisResult = z.infer<
+  typeof UnofficialFallbackHandlerAnalysisResultSchema
+>;
+
 //----------------------- Threat Analysis Result Types -------------------------//
 
-export type MasterCopyChangeThreatAnalysisResult =
-  AnalysisResult<'MASTERCOPY_CHANGE'> & {
-    /** Address of the old master copy/implementation contract */
-    before: Address;
-    /** Address of the new master copy/implementation contract */
-    after: Address;
-  };
+export type MasterCopyChangeThreatAnalysisResult = z.infer<
+  typeof MasterCopyChangeThreatAnalysisResultSchema
+>;
 
 export type ThreatIssue = z.infer<typeof ThreatIssueSchema>;
 export type ThreatIssues = Partial<
   Record<keyof typeof Severity, Array<ThreatIssue>>
 >;
 
-export type MaliciousOrModerateThreatAnalysisResult = AnalysisResult<
-  'MALICIOUS' | 'MODERATE'
-> & {
-  /** A potential partial record of specific issues identified during threat analysis, grouped by severity */
-  issues?: ThreatIssues;
-};
+export type MaliciousOrModerateThreatAnalysisResult = z.infer<
+  typeof MaliciousOrModerateThreatAnalysisResultSchema
+>;
+
+export type FailedThreatAnalysisResult = z.infer<
+  typeof FailedThreatAnalysisResultSchema
+>;
 
 /**
  * Type definition for threat analysis results.
- * Inferred from the Zod schema to avoid duplication.
- * Uses discriminated union to provide type-specific fields.
  */
-
-export type ThreatAnalysisResult =
-  | MasterCopyChangeThreatAnalysisResult
-  | MaliciousOrModerateThreatAnalysisResult
-  | AnalysisResult<
-      | Exclude<ThreatStatus, 'MASTERCOPY_CHANGE' | 'MALICIOUS' | 'MODERATE'>
-      | CommonStatus
-    >;
+export type ThreatAnalysisResult = z.infer<typeof ThreatAnalysisResultSchema>;

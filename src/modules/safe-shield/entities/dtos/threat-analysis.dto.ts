@@ -7,6 +7,7 @@ import {
 import { AnalysisResultDto } from './analysis-result.dto';
 import {
   CommonStatus,
+  FailedThreatAnalysisResult,
   MaliciousOrModerateThreatAnalysisResult,
   MasterCopyChangeThreatAnalysisResult,
   ThreatAnalysisResult,
@@ -23,6 +24,7 @@ import {
 } from '../threat-analysis.types';
 import { Address } from 'viem';
 import type { z } from 'zod';
+import { ThreatStatusGroup } from '@/modules/safe-shield/entities/status-group.entity';
 
 /**
  * DTO for master copy change threat analysis result.
@@ -33,7 +35,7 @@ export class MasterCopyChangeThreatAnalysisResultDto
 {
   @ApiProperty({
     description: 'Threat status code',
-    enum: ['MASTERCOPY_CHANGE'],
+    enum: [ThreatStatus.MASTERCOPY_CHANGE],
   })
   declare type: Extract<ThreatStatus, 'MASTERCOPY_CHANGE'>;
 
@@ -73,7 +75,7 @@ export class MaliciousOrModerateThreatAnalysisResultDto
 {
   @ApiProperty({
     description: 'Threat status code',
-    enum: ['MALICIOUS', 'MODERATE'],
+    enum: [ThreatStatus.MALICIOUS, ThreatStatus.MODERATE],
   })
   declare type: Extract<ThreatStatus, 'MALICIOUS' | 'MODERATE'>;
 
@@ -96,22 +98,41 @@ export class MaliciousOrModerateThreatAnalysisResultDto
       WARN: [{ description: 'High gas price detected' }],
     },
   })
-  issues?: ThreatIssues;
+  public readonly issues?: ThreatIssues;
+}
+
+/**
+ * DTO for failed threat analysis result.
+ */
+export class FailedThreatAnalysisResultDto
+  extends AnalysisResultDto<'FAILED'>
+  implements FailedThreatAnalysisResult
+{
+  @ApiProperty({
+    description: 'Threat status code',
+    enum: [CommonStatus.FAILED],
+  })
+  declare type: Extract<CommonStatus, 'FAILED'>;
 }
 
 /**
  * DTO for generic threat analysis result.
  */
 export class ThreatAnalysisResultDto extends AnalysisResultDto<
-  ThreatStatus | CommonStatus
+  Exclude<ThreatStatus, 'MASTERCOPY_CHANGE' | 'MALICIOUS' | 'MODERATE'>
 > {
   @ApiProperty({
     description: 'Threat status code',
-    enum: ['NO_THREAT', 'OWNERSHIP_CHANGE', 'MODULE_CHANGE', ...CommonStatus],
+    enum: [
+      ThreatStatus.NO_THREAT,
+      ThreatStatus.OWNERSHIP_CHANGE,
+      ThreatStatus.MODULE_CHANGE,
+    ],
   })
-  declare type:
-    | Exclude<ThreatStatus, 'MASTERCOPY_CHANGE' | 'MALICIOUS' | 'MODERATE'>
-    | CommonStatus;
+  declare type: Exclude<
+    ThreatStatus,
+    'MASTERCOPY_CHANGE' | 'MALICIOUS' | 'MODERATE'
+  >;
 }
 
 /**
@@ -121,13 +142,13 @@ abstract class BaseAssetDetailsDto {
   @ApiPropertyOptional({
     description: 'Token symbol (if available)',
   })
-  symbol?: string;
+  public readonly symbol?: string;
 
   @ApiPropertyOptional({
     description: 'URL to asset logo (if available)',
     example: 'https://example.com/logo.png',
   })
-  logo_url?: string;
+  public readonly logo_url?: string;
 }
 
 /**
@@ -138,7 +159,7 @@ export class NativeAssetDetailsDto extends BaseAssetDetailsDto {
     description: 'Asset type',
     enum: ['NATIVE'],
   })
-  type!: Extract<AssetType, 'NATIVE'>;
+  public readonly type!: Extract<AssetType, 'NATIVE'>;
 }
 
 /**
@@ -149,12 +170,12 @@ export class TokenAssetDetailsDto extends BaseAssetDetailsDto {
     description: 'Asset type',
     enum: ['ERC20', 'ERC721', 'ERC1155'],
   })
-  type!: Exclude<AssetType, 'NATIVE'>;
+  public readonly type!: Exclude<AssetType, 'NATIVE'>;
 
   @ApiProperty({
     description: 'Token contract address',
   })
-  address!: Address;
+  public readonly address!: Address;
 }
 
 /**
@@ -170,7 +191,7 @@ export class FungibleDiffDto implements z.infer<typeof FungibleDiffSchema> {
     description: 'Value change for fungible tokens',
     example: '1000000',
   })
-  value?: string;
+  public readonly value?: string;
 }
 
 /**
@@ -181,7 +202,7 @@ export class NFTDiffDto implements z.infer<typeof NFTDiffSchema> {
     description: 'Token ID for NFTs',
     example: 42,
   })
-  token_id!: number;
+  public readonly token_id!: number;
 }
 
 /**
@@ -201,7 +222,7 @@ export class BalanceChangeDto implements BalanceChange {
       { $ref: getSchemaPath(TokenAssetDetailsDto) },
     ],
   })
-  asset!: AssetDetailsDto;
+  public readonly asset!: AssetDetailsDto;
 
   @ApiProperty({
     description: 'Incoming asset changes',
@@ -214,7 +235,7 @@ export class BalanceChangeDto implements BalanceChange {
     },
     example: [{ value: '1000000' }],
   })
-  in!: Array<FungibleDiffDto | NFTDiffDto>;
+  public readonly in!: Array<FungibleDiffDto | NFTDiffDto>;
 
   @ApiProperty({
     description: 'Outgoing asset changes',
@@ -227,7 +248,7 @@ export class BalanceChangeDto implements BalanceChange {
     },
     example: [{ value: '500000' }],
   })
-  out!: Array<FungibleDiffDto | NFTDiffDto>;
+  public readonly out!: Array<FungibleDiffDto | NFTDiffDto>;
 }
 
 /**
@@ -241,6 +262,7 @@ export class BalanceChangeDto implements BalanceChange {
   ThreatAnalysisResultDto,
   MasterCopyChangeThreatAnalysisResultDto,
   MaliciousOrModerateThreatAnalysisResultDto,
+  FailedThreatAnalysisResultDto,
   ThreatIssueDto,
 )
 export class ThreatAnalysisResponseDto implements ThreatAnalysisResponse {
@@ -253,6 +275,7 @@ export class ThreatAnalysisResponseDto implements ThreatAnalysisResponse {
       { $ref: getSchemaPath(ThreatAnalysisResultDto) },
       { $ref: getSchemaPath(MasterCopyChangeThreatAnalysisResultDto) },
       { $ref: getSchemaPath(MaliciousOrModerateThreatAnalysisResultDto) },
+      { $ref: getSchemaPath(FailedThreatAnalysisResultDto) },
     ],
     isArray: true,
     example: [
@@ -264,7 +287,7 @@ export class ThreatAnalysisResponseDto implements ThreatAnalysisResponse {
       },
     ],
   })
-  THREAT?: Array<ThreatAnalysisResult>;
+  public readonly [ThreatStatusGroup.THREAT]?: Array<ThreatAnalysisResult>;
 
   @ApiPropertyOptional({
     description:
@@ -284,7 +307,7 @@ export class ThreatAnalysisResponseDto implements ThreatAnalysisResponse {
       },
     ],
   })
-  BALANCE_CHANGE?: Array<BalanceChange>;
+  public readonly [ThreatStatusGroup.BALANCE_CHANGE]?: Array<BalanceChange>;
 
   @ApiPropertyOptional({
     description:
@@ -292,5 +315,5 @@ export class ThreatAnalysisResponseDto implements ThreatAnalysisResponse {
       'Used for reporting false positives/negatives via the report endpoint.',
     example: '11111111-1111-1111-1111-111111111111',
   })
-  request_id?: string;
+  public readonly request_id?: string;
 }

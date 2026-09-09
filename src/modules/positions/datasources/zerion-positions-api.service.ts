@@ -1,5 +1,4 @@
 import { IConfigurationService } from '@/config/configuration.service.interface';
-import { ChainAttributes } from '@/modules/balances/datasources/entities/provider-chain-attributes.entity';
 import {
   ZerionAttributes,
   ZerionBalance,
@@ -33,13 +32,16 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Address, getAddress } from 'viem';
 import { z, ZodError } from 'zod';
 import { Position } from '@/modules/positions/domain/entities/position.entity';
-import { getZerionHeaders } from '@/modules/balances/datasources/zerion-api.helpers';
+import {
+  getZerionHeaders,
+  normalizeZerionBalances,
+} from '@/modules/balances/datasources/zerion-api.helpers';
+import { ZerionChainMappingService } from '@/modules/zerion/datasources/zerion-chain-mapping.service';
 
 @Injectable()
 export class ZerionPositionsApi implements IPositionsApi {
   private readonly apiKey: string | undefined;
   private readonly baseUri: string;
-  private readonly chainsConfiguration: Record<number, ChainAttributes>;
   private readonly defaultExpirationTimeInSeconds: number;
   private readonly fiatCodes: Array<string>;
 
@@ -50,6 +52,7 @@ export class ZerionPositionsApi implements IPositionsApi {
     @Inject(IConfigurationService)
     private readonly configurationService: IConfigurationService,
     private readonly httpErrorFactory: HttpErrorFactory,
+    private readonly zerionChainMappingService: ZerionChainMappingService,
   ) {
     this.apiKey = this.configurationService.get<string>(
       'balances.providers.zerion.apiKey',
@@ -61,9 +64,6 @@ export class ZerionPositionsApi implements IPositionsApi {
       this.configurationService.getOrThrow<number>(
         'expirationTimeInSeconds.zerionPositions',
       );
-    this.chainsConfiguration = this.configurationService.getOrThrow<
-      Record<number, ChainAttributes>
-    >('balances.providers.zerion.chains');
     this.fiatCodes = this.configurationService.getOrThrow<Array<string>>(
       'balances.providers.zerion.currencies',
     );
@@ -74,6 +74,7 @@ export class ZerionPositionsApi implements IPositionsApi {
     safeAddress: Address;
     fiatCode: string;
     refresh?: string;
+    sync?: boolean;
   }): Promise<Raw<Array<Position>>> {
     if (!this.fiatCodes.includes(args.fiatCode.toUpperCase())) {
       throw new DataSourceError(
@@ -87,16 +88,14 @@ export class ZerionPositionsApi implements IPositionsApi {
       fiatCode: args.fiatCode,
       refresh: args.refresh,
     });
-    const chainName = this._getChainName(args.chain);
+    const chainName = await this._getChainName(args.chain);
 
     const cached = await this.cacheService.hGet(cacheDir);
     if (cached != null) {
       const { key, field } = cacheDir;
       this.loggingService.debug({ type: LogType.CacheHit, key, field });
-      const zerionBalances = z
-        .array(ZerionBalanceSchema)
-        .parse(JSON.parse(cached));
-      return this._mapPositions(chainName, zerionBalances);
+      const balances = z.array(ZerionBalanceSchema).parse(JSON.parse(cached));
+      return this._mapPositions(chainName, balances);
     }
 
     try {
@@ -107,14 +106,18 @@ export class ZerionPositionsApi implements IPositionsApi {
         field,
       });
       const url = `${this.baseUri}/v1/wallets/${args.safeAddress}/positions`;
+      const params: Record<string, string> = {
+        'filter[chain_ids]': chainName,
+        'filter[positions]': 'only_complex',
+        currency: args.fiatCode.toLowerCase(),
+        sort: 'value',
+      };
+      if (args.sync) {
+        params['sync'] = 'true';
+      }
       const networkRequest = {
         headers: getZerionHeaders(this.apiKey, args.chain.isTestnet),
-        params: {
-          'filter[chain_ids]': chainName,
-          'filter[positions]': 'only_complex',
-          currency: args.fiatCode.toLowerCase(),
-          sort: 'value',
-        },
+        params,
       };
       const zerionBalances = await this.networkService
         .get<ZerionBalances>({
@@ -122,12 +125,13 @@ export class ZerionPositionsApi implements IPositionsApi {
           networkRequest,
         })
         .then(({ data }) => ZerionBalancesSchema.parse(data));
+      const balances = normalizeZerionBalances(zerionBalances.data);
       await this.cacheService.hSet(
         cacheDir,
-        JSON.stringify(zerionBalances.data),
+        JSON.stringify(balances),
         this.defaultExpirationTimeInSeconds,
       );
-      return this._mapPositions(chainName, zerionBalances.data);
+      return this._mapPositions(chainName, balances);
     } catch (error) {
       if (error instanceof LimitReachedError || error instanceof ZodError) {
         throw error;
@@ -165,8 +169,8 @@ export class ZerionPositionsApi implements IPositionsApi {
             `Zerion error: ${chainName} implementation not found for balance ${zb.id}`,
           );
         const { value, price, application_metadata } = zb.attributes;
-        const fiatBalance = value ? getNumberString(value) : null;
-        const fiatConversion = price ? getNumberString(price) : null;
+        const fiatBalance = value !== null ? getNumberString(value) : null;
+        const fiatConversion = price !== null ? getNumberString(price) : null;
 
         return {
           ...(implementation.address === null
@@ -218,15 +222,19 @@ export class ZerionPositionsApi implements IPositionsApi {
    * @param chain
    * @private
    */
-  private _getChainName(chain: Chain): string {
+  private async _getChainName(chain: Chain): Promise<string> {
     const chainName =
-      chain.balancesProvider.chainName ??
-      this.chainsConfiguration[Number(chain.chainId)]?.chainName;
+      chain.balancesProvider.chainName ||
+      (await this.zerionChainMappingService.getNetworkFromChainId(
+        chain.chainId,
+        chain.isTestnet,
+      ));
 
-    if (!chainName)
+    if (!chainName) {
       throw Error(
         `Chain ${chain.chainId} balances retrieval via Zerion is not configured`,
       );
+    }
 
     return chainName;
   }

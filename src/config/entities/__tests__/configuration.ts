@@ -1,32 +1,11 @@
-import { faker } from '@faker-js/faker';
+import { faker } from '@faker-js/faker/.';
 import type configuration from '@/config/entities/configuration';
-import { getAddress } from 'viem';
 
 export default (): ReturnType<typeof configuration> => ({
   about: {
     name: faker.word.words(),
     version: faker.system.semver(),
     buildNumber: faker.string.numeric(),
-  },
-  accounts: {
-    creationRateLimitPeriodSeconds: faker.number.int(),
-    creationRateLimitCalls: faker.number.int(),
-    counterfactualSafes: {
-      creationRateLimitPeriodSeconds: faker.number.int(),
-      creationRateLimitCalls: faker.number.int(),
-    },
-    encryption: {
-      type: faker.string.sample(),
-      awsKms: {
-        algorithm: faker.string.alphanumeric(),
-        keyId: faker.string.uuid(),
-      },
-      local: {
-        algorithm: faker.string.alphanumeric(),
-        key: faker.string.alphanumeric(),
-        iv: faker.string.alphanumeric(),
-      },
-    },
   },
   amqp: {
     url: faker.internet.url({ appendSlash: false }),
@@ -64,21 +43,6 @@ export default (): ReturnType<typeof configuration> => ({
       zerion: {
         apiKey: faker.string.hexadecimal({ length: 32 }),
         baseUri: faker.internet.url({ appendSlash: false }),
-        chains: {
-          1: { chainName: faker.string.sample() },
-          10: { chainName: faker.string.sample() },
-          100: { chainName: faker.string.sample() },
-          1101: { chainName: faker.string.sample() },
-          1313161554: { chainName: faker.string.sample() },
-          137: { chainName: faker.string.sample() },
-          324: { chainName: faker.string.sample() },
-          42161: { chainName: faker.string.sample() },
-          42220: { chainName: faker.string.sample() },
-          43114: { chainName: faker.string.sample() },
-          534352: { chainName: faker.string.sample() },
-          56: { chainName: faker.string.sample() },
-          8453: { chainName: faker.string.sample() },
-        },
         currencies: Array.from(
           new Set([
             ...Array.from(
@@ -105,10 +69,10 @@ export default (): ReturnType<typeof configuration> => ({
     },
   },
   blockchain: {
-    blocklist: faker.helpers.multiple(
-      () => getAddress(faker.finance.ethereumAddress()),
-      { count: { min: 1, max: 5 } },
-    ),
+    blocklistEnabled: false,
+    blocklistSecretData: faker.string.hexadecimal({ length: 64 }),
+    blocklistSecretKey: faker.string.hexadecimal({ length: 64 }),
+    blocklistSecretSalt: faker.string.hexadecimal({ length: 64 }),
     infura: {
       apiKey: faker.string.hexadecimal({ length: 32 }),
     },
@@ -187,13 +151,12 @@ export default (): ReturnType<typeof configuration> => ({
   express: { jsonLimit: '1mb' },
   features: {
     email: false,
-    zerionBalancesChainIds: ['137'],
+    zerionBalancesEnabled: false,
     zerionPositions: false,
     debugLogs: false,
     configHooksDebugLogs: false,
     auth: false,
     counterfactualBalances: false,
-    accounts: false,
     users: false,
     hookHttpPostEvent: false,
     improvedAddressPoisoning: false,
@@ -294,6 +257,7 @@ export default (): ReturnType<typeof configuration> => ({
       10: faker.string.hexadecimal({ length: 32 }),
       56: faker.string.hexadecimal({ length: 32 }),
       100: faker.string.hexadecimal({ length: 32 }),
+      130: faker.string.hexadecimal({ length: 32 }),
       137: faker.string.hexadecimal({ length: 32 }),
       1101: faker.string.hexadecimal({ length: 32 }),
       8453: faker.string.hexadecimal({ length: 32 }),
@@ -370,12 +334,16 @@ export default (): ReturnType<typeof configuration> => ({
     chains: {
       maxSequentialPages: faker.number.int(),
     },
+    safes: {
+      maxSequentialPages: faker.number.int(),
+    },
   },
   safeDataDecoder: {
     baseUri: faker.internet.url({ appendSlash: false }),
   },
   safeTransaction: {
     useVpcUrl: false,
+    apiKey: faker.string.hexadecimal({ length: 32 }),
   },
   safeWebApp: {
     baseUri: faker.internet.url({ appendSlash: false }),
@@ -420,6 +388,7 @@ export default (): ReturnType<typeof configuration> => ({
       43114: faker.internet.url({ appendSlash: false }),
       11155111: faker.internet.url({ appendSlash: false }),
       59144: faker.internet.url({ appendSlash: false }),
+      9745: faker.internet.url({ appendSlash: false }),
     },
     explorerBaseUri: faker.internet.url({ appendSlash: true }),
     restrictApps: false,
@@ -477,5 +446,10 @@ export default (): ReturnType<typeof configuration> => ({
         apiKey: faker.string.hexadecimal({ length: 32 }),
       },
     },
+  },
+  etherscan: {
+    baseUri: faker.internet.url({ appendSlash: false }),
+    apiKey: faker.string.hexadecimal({ length: 32 }),
+    gasPriceCacheTtlSeconds: faker.number.int({ min: 1, max: 10 }),
   },
 });

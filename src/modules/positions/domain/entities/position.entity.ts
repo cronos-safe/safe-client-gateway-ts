@@ -4,21 +4,33 @@ import {
   FiatSchema,
   NativeBalanceSchema,
 } from '@/modules/balances/domain/entities/balance.entity';
-import { ZerionApplicationMetadataSchema } from '@/modules/balances/datasources/entities/zerion-balance.entity';
 import { PositionTypeSchema } from '@/modules/positions/domain/entities/position-type.entity';
+import { NullableStringSchema } from '@/validation/entities/schemas/nullable.schema';
 
 export type Position = z.infer<typeof PositionSchema>;
 
-const PositionAttributeSchema = z.object({
-  protocol: z.string().nullish().default(null),
+export const ApplicationMetadataSchema = z.object({
+  name: z.string(),
+  icon: z.object({
+    url: NullableStringSchema,
+  }),
+  url: z.string(),
+});
+
+export const PositionAttributeSchema = z.object({
+  protocol: NullableStringSchema,
   name: z.string(),
   position_type: PositionTypeSchema,
-  application_metadata: ZerionApplicationMetadataSchema.nullish().default(null),
+  application_metadata: ApplicationMetadataSchema.nullish().default(null),
 });
 
 export const PositionSchema = z.union([
-  NativeBalanceSchema.merge(FiatSchema).merge(PositionAttributeSchema),
-  Erc20BalanceSchema.merge(FiatSchema).merge(PositionAttributeSchema),
+  NativeBalanceSchema.extend(FiatSchema.shape).extend(
+    PositionAttributeSchema.shape,
+  ),
+  Erc20BalanceSchema.extend(FiatSchema.shape).extend(
+    PositionAttributeSchema.shape,
+  ),
 ]);
 
 export const PositionsSchema = z.array(PositionSchema);

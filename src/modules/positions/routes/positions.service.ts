@@ -1,7 +1,10 @@
 import { groupBy } from 'lodash';
 import { Inject, Injectable } from '@nestjs/common';
 import { IPositionsRepository } from '@/modules/positions/domain/positions.repository.interface';
-import { Position as DomainPosition } from '@/modules/positions/domain/entities/position.entity';
+import {
+  ApplicationMetadataSchema,
+  Position as DomainPosition,
+} from '@/modules/positions/domain/entities/position.entity';
 import { IChainsRepository } from '@/modules/chains/domain/chains.repository.interface';
 import { NativeCurrency } from '@/modules/chains/domain/entities/native.currency.entity';
 import { NULL_ADDRESS } from '@/routes/common/constants';
@@ -9,9 +12,7 @@ import { getNumberString } from '@/domain/common/utils/utils';
 import { Protocol } from '@/modules/positions/routes/entities/protocol.entity';
 import { Position } from '@/modules/positions/routes/entities/position.entity';
 import { PositionGroup } from '@/modules/positions/routes/entities/position-group.entity';
-import { ZerionApplicationMetadataSchema } from '@/modules/balances/datasources/entities/zerion-balance.entity';
 import { z } from 'zod';
-import { PositionType } from '@/modules/positions/domain/entities/position-type.entity';
 import type { Address } from 'viem';
 
 const DUST_THRESHOLD_USD = 0.01;
@@ -19,7 +20,7 @@ const DUST_THRESHOLD_USD = 0.01;
 interface PositionEntry extends Position {
   protocol?: string;
   name: string;
-  application_metadata?: z.infer<typeof ZerionApplicationMetadataSchema>;
+  application_metadata?: z.infer<typeof ApplicationMetadataSchema>;
 }
 
 @Injectable()
@@ -36,15 +37,16 @@ export class PositionsService {
     safeAddress: Address;
     fiatCode: string;
     refresh?: boolean;
+    sync?: boolean;
   }): Promise<Array<Protocol>> {
-    const { chainId, refresh } = args;
+    const { chainId, refresh, sync } = args;
     const chain = await this.chainsRepository.getChain(chainId);
-    // Convert boolean refresh to timestamp string for cache busting
     const refreshKey = refresh ? Date.now().toString() : '';
     const domainPositions = await this.positionsRepository.getPositions({
       ...args,
       chain,
       refresh: refreshKey,
+      sync,
     });
     const positions = domainPositions.map((position) =>
       this._mapPosition(position, chain.nativeCurrency),
@@ -83,8 +85,7 @@ export class PositionsService {
     // Calculate fiat total from all individual positions
     const fiatTotal = filteredPositions.reduce((sum, position) => {
       const fiatBalance = Number(position.fiatBalance) || 0;
-      const sign = position.position_type === PositionType.loan ? -1 : 1;
-      return sum + sign * fiatBalance;
+      return sum + fiatBalance;
     }, 0);
     return {
       protocol,

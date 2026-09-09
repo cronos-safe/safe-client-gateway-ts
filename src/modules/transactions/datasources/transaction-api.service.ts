@@ -3,6 +3,7 @@ import type { CacheFirstDataSource } from '@/datasources/cache/cache.first.data.
 import { CacheRouter } from '@/datasources/cache/cache.router';
 import type { ICacheService } from '@/datasources/cache/cache.service.interface';
 import { MAX_TTL } from '@/datasources/cache/constants';
+import { CircuitBreakerKeys } from '@/datasources/circuit-breaker/circuit-breaker.keys';
 import type { HttpErrorFactory } from '@/datasources/errors/http-error-factory';
 import { NetworkResponseError } from '@/datasources/network/entities/network.error.entity';
 import type { INetworkService } from '@/datasources/network/network.service.interface';
@@ -21,7 +22,7 @@ import type { CreationTransaction } from '@/modules/safe/domain/entities/creatio
 import type { ModuleTransaction } from '@/modules/safe/domain/entities/module-transaction.entity';
 import type { MultisigTransaction } from '@/modules/safe/domain/entities/multisig-transaction.entity';
 import type { SafeList } from '@/modules/safe/domain/entities/safe-list.entity';
-import type { Safe } from '@/modules/safe/domain/entities/safe.entity';
+import type { Safe, SafeV2 } from '@/modules/safe/domain/entities/safe.entity';
 import type { Transaction } from '@/modules/safe/domain/entities/transaction.entity';
 import type { Transfer } from '@/modules/safe/domain/entities/transfer.entity';
 import type { Token } from '@/modules/tokens/domain/entities/token.entity';
@@ -949,6 +950,42 @@ export class TransactionApi implements ITransactionApi {
         notFoundExpireTimeSeconds: this.defaultNotFoundExpirationTimeSeconds,
         expireTimeSeconds: this.ownersExpirationTimeSeconds,
         networkRequest: {
+          timeout: this.ownersTimeout,
+          circuitBreaker: {
+            key: CircuitBreakerKeys.getTransactionServiceKey(this.chainId),
+          },
+        },
+      });
+    } catch (error) {
+      throw this.httpErrorFactory.from(this.mapError(error));
+    }
+  }
+
+  // Important: there is no hook which invalidates this endpoint,
+  // Therefore, this data will live in cache until [ownersExpirationTimeSeconds]
+  async getSafesByOwnerV2(args: {
+    ownerAddress: Address;
+    limit?: number;
+    offset?: number;
+  }): Promise<Raw<Page<SafeV2>>> {
+    try {
+      const cacheDir = CacheRouter.getSafesByOwnerV2CacheDir({
+        chainId: this.chainId,
+        ownerAddress: args.ownerAddress,
+        limit: args.limit,
+        offset: args.offset,
+      });
+      const url = `${this.baseUrl}/api/v2/owners/${args.ownerAddress}/safes/`;
+      return await this.dataSource.get<Page<SafeV2>>({
+        cacheDir,
+        url,
+        notFoundExpireTimeSeconds: this.defaultNotFoundExpirationTimeSeconds,
+        expireTimeSeconds: this.ownersExpirationTimeSeconds,
+        networkRequest: {
+          params: {
+            limit: args.limit,
+            offset: args.offset,
+          },
           timeout: this.ownersTimeout,
         },
       });

@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { CacheDir } from '@/datasources/cache/entities/cache-dir.entity';
 import type { Address, Hash } from 'viem';
 import type { TransactionInfo } from '@/modules/transactions/routes/entities/transaction-info.entity';
+import type { ExtractedContract } from '@/modules/safe-shield/entities/extracted-contract.entity';
 
 export class CacheRouter {
   private static readonly ACCOUNT_DATA_SETTINGS_KEY = 'account_data_settings';
@@ -81,6 +82,7 @@ export class CacheRouter {
   private static readonly TRANSACTIONS_EXPORT_KEY = 'transactions_export';
   private static readonly CONTRACT_ANALYSIS_KEY = 'contract_analysis';
   private static readonly RECIPIENT_ANALYSIS_KEY = 'recipient_analysis';
+  private static readonly GAS_PRICE_KEY = 'gas_price';
 
   static getAuthNonceCacheKey(nonce: string): string {
     return `${CacheRouter.AUTH_NONCE_KEY}_${nonce}`;
@@ -491,6 +493,25 @@ export class CacheRouter {
     );
   }
 
+  static getSafesByOwnerV2CacheKey(args: {
+    chainId: string;
+    ownerAddress: Address;
+  }): string {
+    return `${args.chainId}_${CacheRouter.OWNERS_SAFE_KEY}_v2_${args.ownerAddress}`;
+  }
+
+  static getSafesByOwnerV2CacheDir(args: {
+    chainId: string;
+    ownerAddress: Address;
+    limit?: number;
+    offset?: number;
+  }): CacheDir {
+    return new CacheDir(
+      this.getSafesByOwnerV2CacheKey(args),
+      `${args.limit}_${args.offset}`,
+    );
+  }
+
   static getMessageByHashCacheKey(args: {
     chainId: string;
     messageHash: string;
@@ -866,17 +887,22 @@ export class CacheRouter {
    * Gets cache directory for contract analysis results.
    *
    * @param {string} args.chainId - Chain ID
-   * @param {[Address, boolean][]} args.contractPairs - Array of pairs: contract address and isDelegateCall flag
+   * @param {ExtractedContract[]} args.contracts - Array of contract addresses and interaction metadata
    * @returns {CacheDir} - Cache directory
    */
   static getContractAnalysisCacheDir(args: {
     chainId: string;
-    contractPairs: Array<[Address, boolean]>;
+    contracts: Array<ExtractedContract>;
   }): CacheDir {
     const contractsHash = crypto.createHash('sha256');
-    contractsHash.update(
-      args.contractPairs.sort((a, b) => a[0].localeCompare(b[0])).join(','),
-    );
+    const contractsString = args.contracts
+      .sort((a, b) => a.address.localeCompare(b.address))
+      .map(
+        ({ address, isDelegateCall, fallbackHandler }) =>
+          `${address}:${isDelegateCall}:${fallbackHandler ?? 'none'}`,
+      )
+      .join(',');
+    contractsHash.update(contractsString);
     return new CacheDir(
       `${args.chainId}_${CacheRouter.CONTRACT_ANALYSIS_KEY}`,
       contractsHash.digest('hex'),
@@ -931,8 +957,21 @@ export class CacheRouter {
     );
   }
 
-  static getZerionChainsCacheDir(isTestnet: boolean): CacheDir {
-    const field = isTestnet ? 'mapping_testnet' : 'mapping';
+  static getZerionChainsCacheDir(
+    isTestnet: boolean,
+    direction?: 'networkToChainId' | 'chainIdToNetwork',
+  ): CacheDir {
+    let field: string;
+    if (direction === 'chainIdToNetwork') {
+      field = isTestnet ? 'mapping_reverse_testnet' : 'mapping_reverse';
+    } else {
+      // Default to 'networkToChainId' for backward compatibility
+      field = isTestnet ? 'mapping_testnet' : 'mapping';
+    }
     return new CacheDir(CacheRouter.ZERION_CHAINS_KEY, field);
+  }
+
+  static getGasPriceCacheDir(chainId: string): CacheDir {
+    return new CacheDir(`${chainId}_${CacheRouter.GAS_PRICE_KEY}`, '');
   }
 }

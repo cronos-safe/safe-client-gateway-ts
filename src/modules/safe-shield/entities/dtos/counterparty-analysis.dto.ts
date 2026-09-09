@@ -7,6 +7,7 @@ import {
 import {
   CommonStatus,
   RecipientAnalysisResult,
+  UnofficialFallbackHandlerAnalysisResult,
   type ContractAnalysisResult,
 } from '../analysis-result.entity';
 import type {
@@ -18,6 +19,10 @@ import { AnalysisResultDto } from './analysis-result.dto';
 import { BridgeStatus } from '@/modules/safe-shield/entities/bridge-status.entity';
 import { RecipientStatus } from '@/modules/safe-shield/entities/recipient-status.entity';
 import { Address } from 'viem';
+import {
+  ContractStatusGroup,
+  RecipientStatusGroup,
+} from '@/modules/safe-shield/entities/status-group.entity';
 
 /**
  * DTO for contract analysis result.
@@ -27,10 +32,51 @@ export class ContractAnalysisResultDto extends AnalysisResultDto<
 > {
   @ApiProperty({
     description: 'Contract verification status code',
-    enum: [...ContractStatus, ...CommonStatus],
+    enum: [...Object.values(ContractStatus), ...Object.values(CommonStatus)],
     example: 'VERIFIED',
   })
   declare type: ContractStatus | CommonStatus;
+}
+
+/**
+ * DTO for fallback handler information.
+ */
+class FallbackHandlerInfoDto {
+  @ApiProperty({
+    description: 'Address of the fallback handler contract',
+  })
+  public readonly address!: Address;
+
+  @ApiPropertyOptional({
+    description: 'Name of the fallback handler contract',
+  })
+  public readonly name?: string;
+
+  @ApiPropertyOptional({
+    description: 'Logo URL for the fallback handler contract',
+  })
+  public readonly logoUrl?: string;
+}
+
+/**
+ * DTO for unofficial fallback handler analysis result.
+ * Includes additional fallback handler information.
+ */
+export class FallbackHandlerAnalysisResultDto
+  extends ContractAnalysisResultDto
+  implements UnofficialFallbackHandlerAnalysisResult
+{
+  @ApiProperty({
+    description: 'Status code for unofficial fallback handler',
+    enum: [ContractStatus.UNOFFICIAL_FALLBACK_HANDLER],
+  })
+  declare type: Extract<ContractStatus, 'UNOFFICIAL_FALLBACK_HANDLER'>;
+
+  @ApiPropertyOptional({
+    description: 'Information about the fallback handler',
+    type: FallbackHandlerInfoDto,
+  })
+  public readonly fallbackHandler?: FallbackHandlerInfoDto;
 }
 
 /**
@@ -68,7 +114,7 @@ export class ContractAnalysisDto implements GroupedAnalysisResults<ContractAnaly
       },
     ],
   })
-  public readonly CONTRACT_VERIFICATION?: Array<ContractAnalysisResultDto>;
+  public readonly [ContractStatusGroup.CONTRACT_VERIFICATION]?: Array<ContractAnalysisResultDto>;
 
   @ApiPropertyOptional({
     description:
@@ -85,7 +131,7 @@ export class ContractAnalysisDto implements GroupedAnalysisResults<ContractAnaly
       },
     ],
   })
-  public readonly CONTRACT_INTERACTION?: Array<ContractAnalysisResultDto>;
+  public readonly [ContractStatusGroup.CONTRACT_INTERACTION]?: Array<ContractAnalysisResultDto>;
 
   @ApiPropertyOptional({
     description:
@@ -102,7 +148,29 @@ export class ContractAnalysisDto implements GroupedAnalysisResults<ContractAnaly
       },
     ],
   })
-  public readonly DELEGATECALL?: Array<ContractAnalysisResultDto>;
+  public readonly [ContractStatusGroup.DELEGATECALL]?: Array<ContractAnalysisResultDto>;
+
+  @ApiPropertyOptional({
+    description:
+      'Analysis results for setFallbackHandler operations. ' +
+      'Identifies untrusted or unofficial fallback handlers in the transactions.',
+    type: [FallbackHandlerAnalysisResultDto],
+    example: [
+      {
+        severity: 'WARN',
+        type: 'UNOFFICIAL_FALLBACK_HANDLER',
+        title: 'Unofficial fallback handler',
+        description:
+          'Verify the fallback handler is trusted and secure before proceeding.',
+        fallbackHandler: {
+          address: '0x123',
+          name: 'CompatibilityFallbackHandler',
+          logoUrl: 'https://example.com/logo.png',
+        },
+      },
+    ],
+  })
+  public readonly [ContractStatusGroup.FALLBACK_HANDLER]?: Array<FallbackHandlerAnalysisResultDto>;
 }
 
 /**
@@ -113,7 +181,11 @@ export class RecipientResultDto extends AnalysisResultDto<
 > {
   @ApiProperty({
     description: 'Bridge compatibility status code',
-    enum: [...RecipientStatus, ...BridgeStatus, ...CommonStatus],
+    enum: [
+      ...Object.values(RecipientStatus),
+      ...Object.values(BridgeStatus),
+      ...Object.values(CommonStatus),
+    ],
     example: 'MISSING_OWNERSHIP',
   })
   declare type: RecipientStatus | BridgeStatus | CommonStatus;
@@ -122,7 +194,7 @@ export class RecipientResultDto extends AnalysisResultDto<
     description:
       'Target chain ID for bridge operations. Only present for BridgeStatus.',
   })
-  targetChainId?: string;
+  public readonly targetChainId?: string;
 }
 
 /**
@@ -137,7 +209,7 @@ export class RecipientAnalysisDto implements GroupedAnalysisResults<RecipientAna
     description: 'Indicates whether the analyzed recipient address is a Safe.',
     example: true,
   })
-  isSafe!: boolean;
+  public readonly isSafe!: boolean;
 
   @ApiPropertyOptional({
     description:
@@ -154,7 +226,7 @@ export class RecipientAnalysisDto implements GroupedAnalysisResults<RecipientAna
       },
     ],
   })
-  RECIPIENT_INTERACTION?: Array<RecipientResultDto>;
+  public readonly [RecipientStatusGroup.RECIPIENT_INTERACTION]?: Array<RecipientResultDto>;
 
   @ApiPropertyOptional({
     description:
@@ -170,7 +242,7 @@ export class RecipientAnalysisDto implements GroupedAnalysisResults<RecipientAna
       },
     ],
   })
-  RECIPIENT_ACTIVITY?: Array<RecipientResultDto>;
+  public readonly [RecipientStatusGroup.RECIPIENT_ACTIVITY]?: Array<RecipientResultDto>;
 
   @ApiPropertyOptional({
     description:
@@ -187,7 +259,7 @@ export class RecipientAnalysisDto implements GroupedAnalysisResults<RecipientAna
       },
     ],
   })
-  BRIDGE?: Array<RecipientResultDto>;
+  public readonly [RecipientStatusGroup.BRIDGE]?: Array<RecipientResultDto>;
 }
 
 /**
@@ -196,7 +268,12 @@ export class RecipientAnalysisDto implements GroupedAnalysisResults<RecipientAna
  * Combines recipient and contract analysis results for a transaction simulation.
  * Maps addresses to their respective analysis results grouped by status group.
  */
-@ApiExtraModels(RecipientAnalysisDto, ContractAnalysisDto)
+@ApiExtraModels(
+  RecipientAnalysisDto,
+  ContractAnalysisDto,
+  FallbackHandlerAnalysisResultDto,
+  FallbackHandlerInfoDto,
+)
 export class CounterpartyAnalysisDto implements CounterpartyAnalysisResponse {
   @ApiProperty({
     description:
@@ -222,9 +299,9 @@ export class CounterpartyAnalysisDto implements CounterpartyAnalysisResponse {
       },
     },
   })
-  recipient!: Record<
+  public readonly recipient!: Record<
     Address,
-    (Partial<RecipientAnalysisDto> & { isSafe: boolean }) | undefined
+    Partial<RecipientAnalysisDto> & { isSafe: boolean }
   >;
 
   @ApiProperty({
@@ -250,5 +327,5 @@ export class CounterpartyAnalysisDto implements CounterpartyAnalysisResponse {
       },
     },
   })
-  contract!: Record<Address, Partial<ContractAnalysisDto> | undefined>;
+  public readonly contract!: Record<Address, Partial<ContractAnalysisDto>>;
 }

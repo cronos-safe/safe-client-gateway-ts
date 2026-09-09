@@ -3,6 +3,7 @@ import type { IConfigurationService } from '@/config/configuration.service.inter
 import type { CacheFirstDataSource } from '@/datasources/cache/cache.first.data.source';
 import type { ICacheService } from '@/datasources/cache/cache.service.interface';
 import { CacheDir } from '@/datasources/cache/entities/cache-dir.entity';
+import { CircuitBreakerKeys } from '@/datasources/circuit-breaker/circuit-breaker.keys';
 import { HttpErrorFactory } from '@/datasources/errors/http-error-factory';
 import type { INetworkService } from '@/datasources/network/network.service.interface';
 import { TransactionApi } from '@/modules/transactions/datasources/transaction-api.service';
@@ -402,7 +403,7 @@ describe('TransactionApi', () => {
         `${chainId}_safe_exists_${safe.address}`,
         '',
       );
-      cacheService.hGet.mockResolvedValueOnce(undefined);
+      cacheService.hGet.mockResolvedValueOnce(null);
       networkService.get.mockResolvedValueOnce({
         status: 200,
         data: rawify(safe),
@@ -453,7 +454,7 @@ describe('TransactionApi', () => {
         `${chainId}_safe_exists_${safe.address}`,
         '',
       );
-      cacheService.hGet.mockResolvedValueOnce(undefined);
+      cacheService.hGet.mockResolvedValueOnce(null);
       networkService.get.mockResolvedValueOnce({
         status: 404,
         data: rawify(null),
@@ -491,7 +492,7 @@ describe('TransactionApi', () => {
         `${chainId}_safe_exists_${safe.address}`,
         '',
       );
-      cacheService.hGet.mockResolvedValueOnce(undefined);
+      cacheService.hGet.mockResolvedValueOnce(null);
       networkService.get.mockRejectedValueOnce(
         new NetworkResponseError(
           new URL(getSafeUrl),
@@ -2095,6 +2096,9 @@ describe('TransactionApi', () => {
         expireTimeSeconds: ownersTtlSeconds,
         networkRequest: {
           timeout: ownersTimeout,
+          circuitBreaker: {
+            key: CircuitBreakerKeys.getTransactionServiceKey(chainId),
+          },
         },
       });
     });
@@ -2130,6 +2134,156 @@ describe('TransactionApi', () => {
         notFoundExpireTimeSeconds: notFoundExpireTimeSeconds,
         expireTimeSeconds: ownersTtlSeconds,
         networkRequest: {
+          timeout: ownersTimeout,
+          circuitBreaker: {
+            key: CircuitBreakerKeys.getTransactionServiceKey(chainId),
+          },
+        },
+      });
+    });
+  });
+
+  describe('getSafesByOwnerV2', () => {
+    it('should return paginated safes with valid response', async () => {
+      const owner = getAddress(faker.finance.ethereumAddress());
+      const limit = faker.number.int({ min: 1, max: 100 });
+      const offset = faker.number.int({ min: 0 });
+      const safeV2 = {
+        address: getAddress(faker.finance.ethereumAddress()),
+        owners: [getAddress(faker.finance.ethereumAddress())],
+        threshold: faker.number.int({ min: 1 }),
+        nonce: faker.number.int({ min: 0 }),
+        masterCopy: getAddress(faker.finance.ethereumAddress()),
+        fallbackHandler: getAddress(faker.finance.ethereumAddress()),
+        guard: getAddress(faker.finance.ethereumAddress()),
+        moduleGuard: getAddress(faker.finance.ethereumAddress()),
+        enabledModules: [getAddress(faker.finance.ethereumAddress())],
+      };
+      const safesPage = pageBuilder()
+        .with('results', [safeV2])
+        .with('count', faker.number.int({ min: 1 }))
+        .build();
+      const getSafesByOwnerV2Url = `${baseUrl}/api/v2/owners/${owner}/safes/`;
+      const cacheDir = new CacheDir(
+        `${chainId}_owner_safes_v2_${owner}`,
+        `${limit}_${offset}`,
+      );
+      mockDataSource.get.mockResolvedValueOnce(rawify(safesPage));
+
+      const actual = await service.getSafesByOwnerV2({
+        ownerAddress: owner,
+        limit,
+        offset,
+      });
+
+      expect(actual).toBe(safesPage);
+      expect(mockDataSource.get).toHaveBeenCalledTimes(1);
+      expect(mockDataSource.get).toHaveBeenCalledWith({
+        cacheDir,
+        url: getSafesByOwnerV2Url,
+        notFoundExpireTimeSeconds: notFoundExpireTimeSeconds,
+        expireTimeSeconds: ownersTtlSeconds,
+        networkRequest: {
+          params: {
+            limit,
+            offset,
+          },
+          timeout: ownersTimeout,
+        },
+      });
+    });
+
+    it('should work without limit and offset', async () => {
+      const owner = getAddress(faker.finance.ethereumAddress());
+      const safeV2 = {
+        address: getAddress(faker.finance.ethereumAddress()),
+        owners: [getAddress(faker.finance.ethereumAddress())],
+        threshold: faker.number.int({ min: 1 }),
+        nonce: faker.number.int({ min: 0 }),
+        masterCopy: getAddress(faker.finance.ethereumAddress()),
+        fallbackHandler: getAddress(faker.finance.ethereumAddress()),
+        guard: getAddress(faker.finance.ethereumAddress()),
+        moduleGuard: getAddress(faker.finance.ethereumAddress()),
+        enabledModules: [getAddress(faker.finance.ethereumAddress())],
+      };
+      const safesPage = pageBuilder()
+        .with('results', [safeV2])
+        .with('count', faker.number.int({ min: 1 }))
+        .build();
+      const getSafesByOwnerV2Url = `${baseUrl}/api/v2/owners/${owner}/safes/`;
+      const cacheDir = new CacheDir(
+        `${chainId}_owner_safes_v2_${owner}`,
+        `undefined_undefined`,
+      );
+      mockDataSource.get.mockResolvedValueOnce(rawify(safesPage));
+
+      const actual = await service.getSafesByOwnerV2({
+        ownerAddress: owner,
+      });
+
+      expect(actual).toBe(safesPage);
+      expect(mockDataSource.get).toHaveBeenCalledTimes(1);
+      expect(mockDataSource.get).toHaveBeenCalledWith({
+        cacheDir,
+        url: getSafesByOwnerV2Url,
+        notFoundExpireTimeSeconds: notFoundExpireTimeSeconds,
+        expireTimeSeconds: ownersTtlSeconds,
+        networkRequest: {
+          params: {
+            limit: undefined,
+            offset: undefined,
+          },
+          timeout: ownersTimeout,
+        },
+      });
+    });
+
+    const errorMessage = faker.word.words();
+    it.each([
+      ['Transaction Service', { nonFieldErrors: [errorMessage] }],
+      ['standard', new Error(errorMessage)],
+    ])(`should forward a %s error`, async (_, error) => {
+      const owner = getAddress(faker.finance.ethereumAddress());
+      const limit = faker.number.int({ min: 1, max: 100 });
+      const offset = faker.number.int({ min: 0 });
+      const getSafesByOwnerV2Url = `${baseUrl}/api/v2/owners/${owner}/safes/`;
+      const statusCode = faker.internet.httpStatusCode({
+        types: ['clientError', 'serverError'],
+      });
+      const expected = new DataSourceError(errorMessage, statusCode);
+      const cacheDir = new CacheDir(
+        `${chainId}_owner_safes_v2_${owner}`,
+        `${limit}_${offset}`,
+      );
+      mockDataSource.get.mockRejectedValueOnce(
+        new NetworkResponseError(
+          new URL(getSafesByOwnerV2Url),
+          {
+            status: statusCode,
+          } as Response,
+          error,
+        ),
+      );
+
+      await expect(
+        service.getSafesByOwnerV2({
+          ownerAddress: owner,
+          limit,
+          offset,
+        }),
+      ).rejects.toThrow(expected);
+
+      expect(mockDataSource.get).toHaveBeenCalledTimes(1);
+      expect(mockDataSource.get).toHaveBeenCalledWith({
+        cacheDir,
+        url: getSafesByOwnerV2Url,
+        notFoundExpireTimeSeconds: notFoundExpireTimeSeconds,
+        expireTimeSeconds: ownersTtlSeconds,
+        networkRequest: {
+          params: {
+            limit,
+            offset,
+          },
           timeout: ownersTimeout,
         },
       });

@@ -5,7 +5,7 @@ import {
   NestModule,
   RequestMethod,
 } from '@nestjs/common';
-import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { CacheModule as InMemoryCacheModule } from '@nestjs/cache-manager';
 import { ClsMiddleware, ClsModule } from 'nestjs-cls';
@@ -35,6 +35,7 @@ import { MessagesModule } from '@/modules/messages/messages.module';
 import { RequestScopedLoggingModule } from '@/logging/logging.module';
 import { RouteLoggerInterceptor } from '@/routes/common/interceptors/route-logger.interceptor';
 import { NotFoundLoggerMiddleware } from '@/middleware/not-found-logger.middleware';
+import { BlocklistGuard } from '@/routes/common/guards/blocklist.guard';
 import configuration from '@/config/entities/configuration';
 import { GlobalErrorFilter } from '@/routes/common/filters/global-error.filter';
 import { DataSourceErrorFilter } from '@/routes/common/filters/data-source-error.filter';
@@ -46,7 +47,6 @@ import { RelayModule } from '@/modules/relay/relay.module';
 import { ZodErrorFilter } from '@/routes/common/filters/zod-error.filter';
 import { CacheControlInterceptor } from '@/routes/common/interceptors/cache-control.interceptor';
 import { AuthModule } from '@/modules/auth/auth.module';
-import { AccountsModule } from '@/modules/accounts/accounts.module';
 import { TargetedMessagingModule } from '@/modules/targeted-messaging/targeted-messaging.module';
 import { PostgresDatabaseModule } from '@/datasources/db/v1/postgres-database.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -62,13 +62,13 @@ import { BullModule } from '@nestjs/bullmq';
 import { CsvExportModule } from '@/modules/csv-export/csv-export.module';
 import { SafeShieldModule } from '@/modules/safe-shield/safe-shield.module';
 import { CircuitBreakerModule } from '@/datasources/circuit-breaker/circuit-breaker.module';
+import { BlocklistModule } from '@/config/entities/blocklist.module';
 
 @Module({})
 export class AppModule implements NestModule {
   static register(configFactory = configuration): DynamicModule {
     const {
       auth: isAuthFeatureEnabled,
-      accounts: isAccountsFeatureEnabled,
       users: isUsersFeatureEnabled,
       email: isEmailFeatureEnabled,
       zerionPositions: isZerionPositionsFeatureEnabled,
@@ -80,7 +80,6 @@ export class AppModule implements NestModule {
         PostgresDatabaseModule,
         // features
         AboutModule,
-        ...(isAccountsFeatureEnabled ? [AccountsModule] : []),
         ...(isAuthFeatureEnabled ? [AuthModule] : []),
         BalancesModule,
         ...(isZerionPositionsFeatureEnabled ? [PositionsModule] : []),
@@ -109,6 +108,7 @@ export class AppModule implements NestModule {
         TargetedMessagingModule,
         TransactionsModule,
         // common
+        BlocklistModule,
         CacheModule,
         CircuitBreakerModule,
         // Module for storing and reading from the async local storage
@@ -175,6 +175,10 @@ export class AppModule implements NestModule {
         {
           provide: APP_INTERCEPTOR,
           useClass: CacheControlInterceptor,
+        },
+        {
+          provide: APP_GUARD,
+          useClass: BlocklistGuard,
         },
         {
           provide: APP_FILTER,

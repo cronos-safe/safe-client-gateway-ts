@@ -5,6 +5,12 @@ import { faker } from '@faker-js/faker';
 import omit from 'lodash/omit';
 
 describe('Configuration validator', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  afterEach(() => {
+    process.env.NODE_ENV = originalNodeEnv;
+  });
+
   const validConfiguration: Record<string, unknown> = {
     ...JSON.parse(fakeJson()),
     AUTH_TOKEN: faker.string.uuid(),
@@ -12,6 +18,9 @@ describe('Configuration validator', () => {
     AWS_KMS_ENCRYPTION_KEY_ID: faker.string.uuid(),
     AWS_SECRET_ACCESS_KEY: faker.string.uuid(),
     AWS_REGION: faker.string.alphanumeric(),
+    BLOCKLIST_ENCRYPTED_DATA: faker.string.hexadecimal({ length: 64 }),
+    BLOCKLIST_SECRET_KEY: faker.string.hexadecimal({ length: 64 }),
+    BLOCKLIST_SECRET_SALT: faker.string.hexadecimal({ length: 64 }),
     ALERTS_PROVIDER_SIGNING_KEY: faker.string.uuid(),
     ALERTS_PROVIDER_API_KEY: faker.string.uuid(),
     ALERTS_PROVIDER_ACCOUNT: faker.string.alphanumeric(),
@@ -41,6 +50,7 @@ describe('Configuration validator', () => {
     RELAY_PROVIDER_API_KEY_AVALANCHE: faker.string.uuid(),
     RELAY_PROVIDER_API_KEY_LINEA: faker.string.uuid(),
     RELAY_PROVIDER_API_KEY_BLAST: faker.string.uuid(),
+    RELAY_PROVIDER_API_KEY_UNICHAIN: faker.string.uuid(),
     RELAY_PROVIDER_API_KEY_SEPOLIA: faker.string.uuid(),
     RELAY_NO_FEE_CAMPAIGN_SEPOLIA_SAFE_TOKEN_ADDRESS:
       faker.finance.ethereumAddress(),
@@ -74,6 +84,7 @@ describe('Configuration validator', () => {
     CSV_AWS_SECRET_ACCESS_KEY: faker.string.uuid(),
     CSV_EXPORT_QUEUE_CONCURRENCY: faker.number.int({ min: 1, max: 5 }),
     BLOCKAID_CLIENT_API_KEY: faker.string.uuid(),
+    TX_SERVICE_API_KEY: faker.string.hexadecimal({ length: 32 }),
   };
 
   it('should bypass this validation on test environment', () => {
@@ -117,6 +128,7 @@ describe('Configuration validator', () => {
     { key: 'RELAY_PROVIDER_API_KEY_AVALANCHE' },
     { key: 'RELAY_PROVIDER_API_KEY_LINEA' },
     { key: 'RELAY_PROVIDER_API_KEY_BLAST' },
+    { key: 'RELAY_PROVIDER_API_KEY_UNICHAIN' },
     { key: 'RELAY_PROVIDER_API_KEY_SEPOLIA' },
     { key: 'STAKING_API_KEY' },
     { key: 'STAKING_TESTNET_API_KEY' },
@@ -129,7 +141,24 @@ describe('Configuration validator', () => {
           omit(validConfiguration, key),
           RootConfigurationSchema,
         ),
-      ).toThrow(`Configuration is invalid: ${key} Required`);
+      ).toThrow(
+        `Configuration is invalid: ${key} Invalid input: expected string, received undefined`,
+      );
+    },
+  );
+
+  it.each(['', '   '])(
+    'should reject empty TX_SERVICE_API_KEY values in production environment',
+    (apiKey) => {
+      process.env.NODE_ENV = 'production';
+      expect(() =>
+        configurationValidator(
+          { ...validConfiguration, TX_SERVICE_API_KEY: apiKey },
+          RootConfigurationSchema,
+        ),
+      ).toThrow(
+        'Configuration is invalid: TX_SERVICE_API_KEY Too small: expected string to have >=1 characters',
+      );
     },
   );
 
@@ -169,6 +198,7 @@ describe('Configuration validator', () => {
       RELAY_PROVIDER_API_KEY_AVALANCHE: faker.string.uuid(),
       RELAY_PROVIDER_API_KEY_LINEA: faker.string.uuid(),
       RELAY_PROVIDER_API_KEY_BLAST: faker.string.uuid(),
+      RELAY_PROVIDER_API_KEY_UNICHAIN: faker.string.uuid(),
       RELAY_PROVIDER_API_KEY_SEPOLIA: faker.string.uuid(),
       STAKING_API_KEY: faker.string.uuid(),
       STAKING_TESTNET_API_KEY: faker.string.uuid(),
@@ -176,7 +206,7 @@ describe('Configuration validator', () => {
     expect(() =>
       configurationValidator(invalidConfiguration, RootConfigurationSchema),
     ).toThrow(
-      /LOG_LEVEL Invalid enum value. Expected 'error' | 'warn' | 'info' | 'http' | 'verbose' | 'debug' | 'silly', received/,
+      /LOG_LEVEL Invalid option: expected one of "error"\|"warn"\|"info"\|"http"\|"verbose"\|"debug"\|"silly"/,
     );
   });
 
@@ -194,9 +224,7 @@ describe('Configuration validator', () => {
       expect(() =>
         configurationValidator(config, RootConfigurationSchema),
       ).toThrow(
-        new RegExp(
-          `${key} Invalid enum value. Expected 'local' | 'aws', received`,
-        ),
+        new RegExp(`${key} Invalid option: expected one of "local"\\|"aws"`),
       );
     },
   );
@@ -241,6 +269,7 @@ describe('Configuration validator', () => {
       RELAY_PROVIDER_API_KEY_AVALANCHE: faker.string.uuid(),
       RELAY_PROVIDER_API_KEY_LINEA: faker.string.uuid(),
       RELAY_PROVIDER_API_KEY_BLAST: faker.string.uuid(),
+      RELAY_PROVIDER_API_KEY_UNICHAIN: faker.string.uuid(),
       RELAY_PROVIDER_API_KEY_SEPOLIA: faker.string.uuid(),
       STAKING_API_KEY: faker.string.uuid(),
       STAKING_TESTNET_API_KEY: faker.string.uuid(),
@@ -249,7 +278,7 @@ describe('Configuration validator', () => {
     expect(() =>
       configurationValidator(invalidConfiguration, RootConfigurationSchema),
     ).toThrow(
-      /TARGETED_MESSAGING_FILE_STORAGE_TYPE Invalid enum value. Expected 'local' | 'aws', received/,
+      /TARGETED_MESSAGING_FILE_STORAGE_TYPE Invalid option: expected one of "local"\|"aws"/,
     );
   });
 
@@ -278,6 +307,10 @@ describe('Configuration validator', () => {
       'RELAY_NO_FEE_CAMPAIGN_MAINNET_RELAY_RULES',
       'RELAY_NO_FEE_CAMPAIGN_SEPOLIA_RELAY_RULES',
     ])('%s', (fieldKey) => {
+      beforeEach(() => {
+        process.env.NODE_ENV = 'production';
+      });
+
       it('should accept valid JSON array of relay rules', () => {
         const config = {
           ...validConfiguration,
